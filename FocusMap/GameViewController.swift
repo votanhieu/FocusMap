@@ -15,6 +15,7 @@ class GameViewController: UIViewController {
         
         // Create SceneKit view
         let sceneView = SCNView(frame: self.view.bounds)
+        sceneView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         sceneView.scene = createScene()
         sceneView.backgroundColor = UIColor.black
         sceneView.allowsCameraControl = false
@@ -24,25 +25,77 @@ class GameViewController: UIViewController {
     func createScene() -> SCNScene {
         let scene = SCNScene()
         
-        // Create a cube node
-        let cube = SCNBox(width: 4, height: 4, length: 4, chamferRadius: 0)
-        let cubeNode = SCNNode(geometry: cube)
-        cubeNode.position = SCNVector3(0, 0, 0)
+        // Parameters
+        let size: CGFloat = 4.0
+        let half = size / 2.0
         
-        // Create a semi-transparent material to see inside
-        let material = SCNMaterial()
-        material.diffuse.contents = UIColor(red: 0.2, green: 0.5, blue: 0.8, alpha: 0.3)
-        material.specular.contents = UIColor.white
-        material.transparency = 0.4
-        material.isDoubleSided = true
-        cube.materials = [material]
+        // Helper materials: front vs back
+        // Front is the side along the plane's normal; back is the opposite side.
+        func twoSidedMaterials(front: UIColor, back: UIColor, doubleSided: Bool = true) -> [SCNMaterial] {
+            let frontMat = SCNMaterial()
+            frontMat.diffuse.contents = front
+            frontMat.isDoubleSided = doubleSided
+            
+            let backMat = SCNMaterial()
+            backMat.diffuse.contents = back
+            backMat.isDoubleSided = doubleSided
+            
+            // For SCNPlane, first material is used for front faces, second for back faces
+            return [frontMat, backMat]
+        }
         
-        scene.rootNode.addChildNode(cubeNode)
+        // Bottom face (y = -half), plane normal pointing up (positive Y)
+        let bottomPlane = SCNPlane(width: size, height: size)
+        bottomPlane.materials = twoSidedMaterials(
+            front: UIColor.systemGreen.withAlphaComponent(0.6),   // visible when seen from above
+            back: UIColor.systemRed.withAlphaComponent(0.3)       // visible when seen from below
+        )
+        let bottomNode = SCNNode(geometry: bottomPlane)
+        bottomNode.position = SCNVector3(0, Float(-half), 0)
+        // Rotate plane (which by default faces +Z) to face +Y
+        bottomNode.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
+        scene.rootNode.addChildNode(bottomNode)
         
-        // Add interior planes to visualize inside better
-        addInteriorPlanes(to: scene)
+        // Back face (z = -half), plane normal pointing forward (+Z)
+        let backPlane = SCNPlane(width: size, height: size)
+        backPlane.materials = twoSidedMaterials(
+            front: UIColor.systemBlue.withAlphaComponent(0.6),    // visible when seen from in front (toward +Z)
+            back: UIColor.systemOrange.withAlphaComponent(0.3)    // visible from behind
+        )
+        let backNode = SCNNode(geometry: backPlane)
+        backNode.position = SCNVector3(0, 0, Float(-half))
+        // Default plane faces +Z already; align Y-up
+        backNode.eulerAngles = SCNVector3(0, 0, 0)
+        scene.rootNode.addChildNode(backNode)
         
-        // Create camera with beautiful isometric view
+        // Left face (x = -half), plane normal pointing +X
+        let leftPlane = SCNPlane(width: size, height: size)
+        leftPlane.materials = twoSidedMaterials(
+            front: UIColor.systemYellow.withAlphaComponent(0.6),  // visible when seen from +X side
+            back: UIColor.systemPurple.withAlphaComponent(0.3)    // visible from -X side
+        )
+        let leftNode = SCNNode(geometry: leftPlane)
+        leftNode.position = SCNVector3(Float(-half), 0, 0)
+        // Rotate to face +X: rotate -90° about Y (negative)
+        leftNode.eulerAngles = SCNVector3(0, -Float.pi / 2, 0)
+        scene.rootNode.addChildNode(leftNode)
+        
+        // If you intended both back-side faces, also add right face (x = +half)
+        // Uncomment the following block if you want both sides:
+        /*
+        let rightPlane = SCNPlane(width: size, height: size)
+        rightPlane.materials = twoSidedMaterials(
+            front: UIColor.systemTeal.withAlphaComponent(0.6),
+            back: UIColor.systemPink.withAlphaComponent(0.3)
+        )
+        let rightNode = SCNNode(geometry: rightPlane)
+        rightNode.position = SCNVector3(Float(half), 0, 0)
+        // Rotate to face -X: rotate +90° about Y (positive)
+        rightNode.eulerAngles = SCNVector3(0, Float.pi / 2, 0)
+        scene.rootNode.addChildNode(rightNode)
+        */
+        
+        // Simple fixed camera
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
         cameraNode.position = SCNVector3(5, 4, 5)
@@ -59,66 +112,10 @@ class GameViewController: UIViewController {
         let ambientLight = SCNNode()
         ambientLight.light = SCNLight()
         ambientLight.light!.type = .ambient
-        ambientLight.light!.color = UIColor.gray
+        ambientLight.light!.color = UIColor(white: 0.4, alpha: 1.0)
         scene.rootNode.addChildNode(ambientLight)
         
         return scene
-    }
-    
-    func addInteriorPlanes(to scene: SCNScene) {
-        // Add grid lines on interior faces for better visualization
-        let wireframe = createWireframeBox()
-        scene.rootNode.addChildNode(wireframe)
-    }
-    
-    func createWireframeBox() -> SCNNode {
-        let group = SCNNode()
-        
-        let size: CGFloat = 4.0
-        let offset = size / 2
-        
-        // Define 8 vertices of the cube
-        let vertices: [SCNVector3] = [
-            SCNVector3(-offset, -offset, -offset), // 0
-            SCNVector3(offset, -offset, -offset),  // 1
-            SCNVector3(offset, offset, -offset),   // 2
-            SCNVector3(-offset, offset, -offset),  // 3
-            SCNVector3(-offset, -offset, offset),  // 4
-            SCNVector3(offset, -offset, offset),   // 5
-            SCNVector3(offset, offset, offset),    // 6
-            SCNVector3(-offset, offset, offset)    // 7
-        ]
-        
-        // Define 12 edges (pairs of vertex indices)
-        let edges: [(Int, Int)] = [
-            // Front face
-            (0, 1), (1, 2), (2, 3), (3, 0),
-            // Back face
-            (4, 5), (5, 6), (6, 7), (7, 4),
-            // Connecting edges
-            (0, 4), (1, 5), (2, 6), (3, 7)
-        ]
-        
-        // Create lines for each edge
-        for (startIdx, endIdx) in edges {
-            let line = createLine(from: vertices[startIdx], to: vertices[endIdx])
-            group.addChildNode(line)
-        }
-        
-        return group
-    }
-    
-    func createLine(from start: SCNVector3, to end: SCNVector3) -> SCNNode {
-        let indices: [Int32] = [0, 1]
-        let source = SCNGeometrySource(vertices: [start, end])
-        let element = SCNGeometryElement(indices: indices, primitiveType: .line)
-        let geometry = SCNGeometry(sources: [source], elements: [element])
-        
-        let material = SCNMaterial()
-        material.diffuse.contents = UIColor.cyan
-        geometry.materials = [material]
-        
-        return SCNNode(geometry: geometry)
     }
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
