@@ -28,9 +28,17 @@ class GameViewController: UIViewController {
     var cameraNode: SCNNode?
     let minZoomDistance: Float = 2.0
     let maxZoomDistance: Float = 20.0
+    var selectedPlaneNode: SCNNode?
+    var planeMappings: [String: String] = [:] // plane name -> image name mapping
+    let planeMappingsKey = "planeMappings"
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        // Load saved plane mappings from UserDefaults
+        if let saved = UserDefaults.standard.dictionary(forKey: planeMappingsKey) as? [String: String] {
+            planeMappings = saved
+        }
         
         // Create SceneKit view
         let sceneView = SCNView(frame: self.view.bounds)
@@ -50,6 +58,9 @@ class GameViewController: UIViewController {
         self.sceneView = sceneView
         self.cameraNode = sceneView.scene?.rootNode.childNodes.first { $0.camera != nil }
         self.view.addSubview(sceneView)
+        
+        // Apply saved images to planes
+        applyMappedImages()
     }
     
     @objc func handleTap(_ gesture: UITapGestureRecognizer) {
@@ -82,6 +93,10 @@ class GameViewController: UIViewController {
             
             // Highlight the plane
             highlightPlane(tappedNode)
+            
+            // Store selected plane and show image picker
+            selectedPlaneNode = tappedNode
+            showImagePickerModal()
             break
         }
     }
@@ -230,5 +245,188 @@ class GameViewController: UIViewController {
 
     override var prefersStatusBarHidden: Bool {
         return true
+    }
+    
+    // MARK: - Image Picker Modal
+    
+    func showImagePickerModal() {
+        // Create bottom sheet controller
+        let imagePickerVC = ImagePickerModalViewController()
+        imagePickerVC.delegate = self
+        
+        // Get selected plane name for display
+        if let planeName = selectedPlaneNode?.name {
+            imagePickerVC.selectedImageName = planeMappings[planeName]
+        }
+        
+        // Present as bottom sheet
+        if #available(iOS 15.0, *) {
+            if let sheet = imagePickerVC.sheetPresentationController {
+                sheet.detents = [.custom(resolver: { _ in 160 })]
+                sheet.prefersGrabberVisible = true
+            }
+        }
+        
+        present(imagePickerVC, animated: true)
+    }
+    
+    func applyMappedImages() {
+        guard let scene = sceneView?.scene else { return }
+        
+        for node in scene.rootNode.childNodes {
+            if let planeName = node.name, let imageName = planeMappings[planeName] {
+                applyImageToNode(node, imageName: imageName)
+            }
+        }
+    }
+    
+    func applyImageToNode(_ node: SCNNode, imageName: String) {
+        // Load vector image (PDF/SVG supported in Assets)
+        guard let image = UIImage(named: imageName) else { return }
+        
+        // Update all materials of the plane with the vector image
+        if let geometry = node.geometry {
+            let material = SCNMaterial()
+            material.diffuse.contents = image
+            material.isDoubleSided = true
+            geometry.materials = [material]
+        }
+    }
+}
+
+// MARK: - Image Picker Modal Controller
+
+class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate, UICollectionViewDataSource {
+    weak var delegate: GameViewController?
+    var selectedImageName: String?
+    
+    // Sample vector images from Assets (SVG/PDF)
+    let imageNames = ["vector1", "vector2", "vector3", "vector4", "vector5", "vector6"]
+    
+    private let collectionView = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        view.backgroundColor = .systemBackground
+        setupCollectionView()
+    }
+    
+    private func setupCollectionView() {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .horizontal
+        layout.itemSize = CGSize(width: 120, height: 120)
+        layout.minimumInteritemSpacing = 16
+        layout.minimumLineSpacing = 0
+        layout.sectionInset = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        
+        collectionView.setCollectionViewLayout(layout, animated: false)
+        collectionView.delegate = self
+        collectionView.dataSource = self
+        collectionView.showsHorizontalScrollIndicator = false
+        collectionView.showsVerticalScrollIndicator = false
+        collectionView.backgroundColor = .systemBackground
+        collectionView.isScrollEnabled = true
+        
+        collectionView.register(ImagePickerCell.self, forCellWithReuseIdentifier: "cell")
+        
+        view.addSubview(collectionView)
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        
+        NSLayoutConstraint.activate([
+            collectionView.topAnchor.constraint(equalTo: view.topAnchor),
+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+    
+    // MARK: - UICollectionViewDataSource
+    
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        return imageNames.count
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "cell", for: indexPath) as! ImagePickerCell
+        
+        let imageName = imageNames[indexPath.item]
+        cell.configure(with: imageName, isSelected: imageName == selectedImageName)
+        
+        return cell
+    }
+    
+    // MARK: - UICollectionViewDelegate
+    
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let selectedImageName = imageNames[indexPath.item]
+        
+        guard let planeName = delegate?.selectedPlaneNode?.name else {
+            dismiss(animated: true)
+            return
+        }
+        
+        // Update mapping
+        delegate?.planeMappings[planeName] = selectedImageName
+        
+        // Save to UserDefaults
+        UserDefaults.standard.set(delegate?.planeMappings, forKey: delegate?.planeMappingsKey ?? "planeMappings")
+        
+        // Apply image to plane
+        delegate?.applyImageToNode(delegate!.selectedPlaneNode!, imageName: selectedImageName)
+        
+        dismiss(animated: true)
+    }
+}
+
+// MARK: - Image Picker Cell
+
+class ImagePickerCell: UICollectionViewCell {
+    private let imageView = UIImageView()
+    private let selectionIndicator = UIView()
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    private func setupUI() {
+        contentView.addSubview(imageView)
+        contentView.addSubview(selectionIndicator)
+        
+        // Fill the entire item size
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = 8
+        imageView.backgroundColor = .systemGray6
+        
+        selectionIndicator.layer.borderColor = UIColor.systemBlue.cgColor
+        selectionIndicator.layer.borderWidth = 3
+        selectionIndicator.layer.cornerRadius = 8
+        selectionIndicator.isHidden = true
+        
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        selectionIndicator.translatesAutoresizingMaskIntoConstraints = false
+        
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
+            imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            imageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            
+            selectionIndicator.topAnchor.constraint(equalTo: imageView.topAnchor),
+            selectionIndicator.leadingAnchor.constraint(equalTo: imageView.leadingAnchor),
+            selectionIndicator.trailingAnchor.constraint(equalTo: imageView.trailingAnchor),
+            selectionIndicator.bottomAnchor.constraint(equalTo: imageView.bottomAnchor)
+        ])
+    }
+    
+    func configure(with imageName: String, isSelected: Bool) {
+        imageView.image = UIImage(named: imageName)
+        selectionIndicator.isHidden = !isSelected
     }
 }
