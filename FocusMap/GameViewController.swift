@@ -8,7 +8,26 @@
 import UIKit
 import SceneKit
 
+extension SCNVector3 {
+    func distance(to vector: SCNVector3) -> Float {
+        let dx = self.x - vector.x
+        let dy = self.y - vector.y
+        let dz = self.z - vector.z
+        return sqrt(dx*dx + dy*dy + dz*dz)
+    }
+    
+    func normalized() -> SCNVector3 {
+        let length = sqrt(x*x + y*y + z*z)
+        guard length > 0 else { return SCNVector3(0, 0, 0) }
+        return SCNVector3(x/length, y/length, z/length)
+    }
+}
+
 class GameViewController: UIViewController {
+    var sceneView: SCNView?
+    var cameraNode: SCNNode?
+    let minZoomDistance: Float = 2.0
+    let maxZoomDistance: Float = 20.0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -24,6 +43,12 @@ class GameViewController: UIViewController {
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         sceneView.addGestureRecognizer(tapGesture)
         
+        // Add pinch gesture recognizer for zooming
+        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        sceneView.addGestureRecognizer(pinchGesture)
+        
+        self.sceneView = sceneView
+        self.cameraNode = sceneView.scene?.rootNode.childNodes.first { $0.camera != nil }
         self.view.addSubview(sceneView)
     }
     
@@ -73,6 +98,27 @@ class GameViewController: UIViewController {
             }
         ])
         node.runAction(action)
+    }
+    
+    @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+        guard let cameraNode = cameraNode else { return }
+        
+        let scale = Float(gesture.scale)
+        let currentDistance = cameraNode.position.distance(to: SCNVector3(0, -0.5, 0))
+        let newDistance = currentDistance / scale
+        
+        // Clamp the distance to min and max zoom levels
+        let clampedDistance = max(minZoomDistance, min(maxZoomDistance, newDistance))
+        
+        // Calculate new camera position maintaining the direction
+        let direction = cameraNode.position.normalized()
+        cameraNode.position = SCNVector3(
+            direction.x * clampedDistance,
+            direction.y * clampedDistance,
+            direction.z * clampedDistance
+        )
+        
+        gesture.scale = 1.0
     }
     
     func createScene() -> SCNScene {
@@ -154,7 +200,7 @@ class GameViewController: UIViewController {
         // Simple fixed camera
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
-        cameraNode.position = SCNVector3(5, 4, 5)
+        cameraNode.position = SCNVector3(5, 2, 5)
         cameraNode.look(at: SCNVector3(0, -0.5, 0))
         scene.rootNode.addChildNode(cameraNode)
         
