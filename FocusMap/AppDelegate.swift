@@ -7,34 +7,79 @@
 
 import UIKit
 
+// MARK: - AppDelegate
+
+/// Application delegate handling app lifecycle events and configuration
+/// Responsible for app initialization, state transitions, and resource management
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
-
+    
+    // MARK: - Properties
+    
+    /// The root window of the application
     var window: UIWindow?
-
-
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+    
+    // MARK: - Application Lifecycle Methods
+    
+    /// Called when the application has finished launching
+    /// This is the entry point for app-specific initialization after system setup
+    /// - Parameters:
+    ///   - application: The singleton app object
+    ///   - launchOptions: Dictionary with launch-specific information (URLs, notifications, etc.)
+    /// - Returns: Boolean indicating if the app launch should continue
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        // Override point for customization after application launch
+        // Add app initialization code here (e.g., analytics setup, theme configuration, etc.)
         return true
     }
-
+    
+    /// Called when the application transitions from active to inactive state
+    /// This occurs for temporary interruptions (incoming call, SMS) or when user exits the app
+    /// Use this method to pause ongoing tasks, disable timers, and stop animations
+    /// - Parameter application: The singleton app object
     func applicationWillResignActive(_ application: UIApplication) {
-        // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
-        // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
+        // Pause any ongoing gameplay or time-sensitive operations
+        // Save any unsaved user data
+        // Stop background sounds or animations
     }
-
+    
+    /// Called when the application enters the background
+    /// The app may be suspended after this method returns
+    /// Use this method to:
+    /// - Release shared resources
+    /// - Save user data and application state
+    /// - Invalidate timers and file handles
+    /// - Store app state for later restoration
+    /// - Parameter application: The singleton app object
     func applicationDidEnterBackground(_ application: UIApplication) {
-        // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
+        // Save current plane mappings (already done in GameViewController via UserDefaults)
+        // Close any open resources or connections
+        // Prepare app for potential termination
     }
-
+    
+    /// Called when the application transitions from background to foreground
+    /// Use this method to undo changes made when entering background
+    /// - Parameter application: The singleton app object
     func applicationWillEnterForeground(_ application: UIApplication) {
-        // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
+        // Restore app state from background
+        // Resume any paused operations
+        // Refresh any resources that were released
     }
-
+    
+    /// Called when the application becomes active after being inactive
+    /// Restart any tasks that were paused while the app was inactive
+    /// This is called after:
+    /// - App launch completion
+    /// - Return from background
+    /// - User dismisses incoming notifications/calls
+    /// - Parameter application: The singleton app object
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        // Resume gameplay and animations
+        // Refresh UI with latest data
+        // Restart any paused timers or background tasks
+        // Resume any interrupted operations
     }
-
-
 }
-
