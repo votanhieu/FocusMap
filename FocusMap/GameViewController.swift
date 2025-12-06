@@ -19,7 +19,60 @@ class GameViewController: UIViewController {
         sceneView.scene = createScene()
         sceneView.backgroundColor = UIColor.black
         sceneView.allowsCameraControl = false
+        
+        // Add tap gesture recognizer for plane selection
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        sceneView.addGestureRecognizer(tapGesture)
+        
         self.view.addSubview(sceneView)
+    }
+    
+    @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+        guard let sceneView = gesture.view as? SCNView else { return }
+        let location = gesture.location(in: sceneView)
+        
+        // Hit test to find tapped planes
+        let hitResults = sceneView.hitTest(location, options: [:])
+        
+        for result in hitResults {
+            let tappedNode = result.node
+            
+            // Check if the node is visible (has geometry and materials)
+            guard let geometry = tappedNode.geometry else { continue }
+            let materials = geometry.materials
+            guard !materials.isEmpty else { continue }
+            
+            // Prefer opacity/transparency for visibility
+            // Node can be hidden via opacity; material can be hidden via transparency
+            let nodeVisible = tappedNode.presentation.opacity > 0.0
+            let hasVisibleMaterial = materials.contains { material in
+                // transparency is 1.0 (fully opaque) to 0.0 (fully transparent)
+                // Consider visible if transparency > 0
+                material.transparency > 0.0
+            }
+            guard nodeVisible && hasVisibleMaterial else { continue }
+            
+            // Plane is clickable and visible
+            print("Tapped plane: \(tappedNode.name ?? "Unknown")")
+            
+            // Highlight the plane
+            highlightPlane(tappedNode)
+            break
+        }
+    }
+    
+    func highlightPlane(_ node: SCNNode) {
+        // Add a simple highlight animation
+        let action = SCNAction.sequence([
+            SCNAction.run { _ in
+                node.opacity = 0.7
+            },
+            SCNAction.wait(duration: 0.1),
+            SCNAction.run { _ in
+                node.opacity = 1.0
+            }
+        ])
+        node.runAction(action)
     }
     
     func createScene() -> SCNScene {
@@ -51,6 +104,7 @@ class GameViewController: UIViewController {
             back: UIColor.systemRed.withAlphaComponent(0.3)       // visible when seen from below
         )
         let bottomNode = SCNNode(geometry: bottomPlane)
+        bottomNode.name = "bottomPlane"
         bottomNode.position = SCNVector3(0, Float(-half), 0)
         // Rotate plane (which by default faces +Z) to face +Y
         bottomNode.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
@@ -63,6 +117,7 @@ class GameViewController: UIViewController {
             back: UIColor.systemOrange.withAlphaComponent(0.3)    // visible from behind
         )
         let backNode = SCNNode(geometry: backPlane)
+        backNode.name = "backPlane"
         backNode.position = SCNVector3(0, 0, Float(-half))
         // Default plane faces +Z already; align Y-up
         backNode.eulerAngles = SCNVector3(0, 0, 0)
@@ -75,6 +130,7 @@ class GameViewController: UIViewController {
             back: UIColor.systemPurple.withAlphaComponent(0.3)    // visible from -X side
         )
         let leftNode = SCNNode(geometry: leftPlane)
+        leftNode.name = "leftPlane"
         leftNode.position = SCNVector3(Float(-half), 0, 0)
         // Rotate to face +X: rotate -90° about Y (negative)
         leftNode.eulerAngles = SCNVector3(0, -Float.pi / 2, 0)
