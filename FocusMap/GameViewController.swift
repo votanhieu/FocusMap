@@ -375,7 +375,7 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
     var selectedImageName: String?
     
     /// List of available vector image asset names
-    let imageNames = ["vector1", "vector2", "vector3", "vector4", "vector5", "vector6"]
+    let imageNames = (1...15).map { "wall\($0)" }
     
     /// Collection view for displaying selectable image thumbnails
     private let collectionView = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
