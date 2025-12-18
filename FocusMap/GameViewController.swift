@@ -181,89 +181,57 @@ class GameViewController: UIViewController {
     
     // MARK: - Scene Setup
     
-    /// Creates and configures the 3D SceneKit scene with planes, camera, and lighting
+    /// Creates and configures the 3D SceneKit scene with a cuboid, camera, and lighting
     /// - Returns: Configured SCNScene with all scene elements
     func createScene() -> SCNScene {
         let scene = SCNScene()
         
-        // Scene parameters
-        let size: CGFloat = 4.0
-        let half = size / 2.0
+        // Cuboid dimensions (width, height, depth)
+        let width: CGFloat = 4.0
+        let height: CGFloat = 3.0
+        let depth: CGFloat = 2.0
         
-        // Helper function to create materials with front and back colors
-        // Allows different colors when viewed from different sides
-        /// Creates two-sided materials for a plane with distinct front and back colors
+        // Helper function to create materials for cuboid faces
+        /// Creates a material with specified color
         /// - Parameters:
-        ///   - front: Color for the front face (along plane normal direction)
-        ///   - back: Color for the back face (opposite to normal direction)
-        ///   - doubleSided: Whether materials should be double-sided
-        /// - Returns: Array of SCNMaterial objects [frontMaterial, backMaterial]
-        func twoSidedMaterials(front: UIColor, back: UIColor, doubleSided: Bool = true) -> [SCNMaterial] {
-            let frontMat = SCNMaterial()
-            frontMat.diffuse.contents = front
-            frontMat.isDoubleSided = doubleSided
-            
-            let backMat = SCNMaterial()
-            backMat.diffuse.contents = back
-            backMat.isDoubleSided = doubleSided
-            
-            // For SCNPlane: first material = front faces, second material = back faces
-            return [frontMat, backMat]
+        ///   - color: Color for the material
+        /// - Returns: SCNMaterial configured with the color
+        func createMaterial(color: UIColor) -> SCNMaterial {
+            let material = SCNMaterial()
+            material.diffuse.contents = color
+            material.isDoubleSided = true
+            return material
         }
         
-        // MARK: Bottom Plane (Y = -half, normal pointing up)
-        let bottomPlane = SCNPlane(width: size, height: size)
-        bottomPlane.materials = twoSidedMaterials(
-            front: UIColor.systemGreen.withAlphaComponent(0.6),   // Visible from above
-            back: UIColor.systemRed.withAlphaComponent(0.3)       // Visible from below
-        )
-        let bottomNode = SCNNode(geometry: bottomPlane)
-        bottomNode.name = "bottomPlane"
-        bottomNode.position = SCNVector3(0, Float(-half), 0)
-        // Rotate plane from default +Z facing to +Y facing
-        bottomNode.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
-        scene.rootNode.addChildNode(bottomNode)
+        let half_width = width / 2.0
+        let half_height = height / 2.0
+        let half_depth = depth / 2.0
         
-        // MARK: Back Plane (Z = -half, normal pointing forward)
-        let backPlane = SCNPlane(width: size, height: size)
-        backPlane.materials = twoSidedMaterials(
-            front: UIColor.systemBlue.withAlphaComponent(0.6),    // Visible from front
-            back: UIColor.systemOrange.withAlphaComponent(0.3)    // Visible from behind
-        )
+        // MARK: Back Plane (2: Blue)
+        let backPlane = SCNPlane(width: width, height: height)
+        backPlane.materials = [createMaterial(color: UIColor(red: 0.0, green: 0.0, blue: 1.0, alpha: 1.0))]
         let backNode = SCNNode(geometry: backPlane)
         backNode.name = "backPlane"
-        backNode.position = SCNVector3(0, 0, Float(-half))
-        // Default plane already faces +Z direction, Y-up orientation
-        backNode.eulerAngles = SCNVector3(0, 0, 0)
+        backNode.position = SCNVector3(0, 0, Float(-half_depth))
         scene.rootNode.addChildNode(backNode)
         
-        // MARK: Left Plane (X = -half, normal pointing left)
-        let leftPlane = SCNPlane(width: size, height: size)
-        leftPlane.materials = twoSidedMaterials(
-            front: UIColor.systemYellow.withAlphaComponent(0.6),  // Visible from +X side
-            back: UIColor.systemPurple.withAlphaComponent(0.3)    // Visible from -X side
-        )
+        // MARK: Left Plane (3: Yellow)
+        let leftPlane = SCNPlane(width: CGFloat(Float(depth)), height: CGFloat(Float(height)))
+        leftPlane.materials = [createMaterial(color: UIColor(red: 1.0, green: 1.0, blue: 0.0, alpha: 1.0))]
         let leftNode = SCNNode(geometry: leftPlane)
         leftNode.name = "leftPlane"
-        leftNode.position = SCNVector3(Float(-half), 0, 0)
-        // Rotate -90° around Y axis to face -X direction
-        leftNode.eulerAngles = SCNVector3(0, -Float.pi / 2, 0)
+        leftNode.position = SCNVector3(Float(-half_width), 0, 0)
+        leftNode.eulerAngles = SCNVector3(0, Float.pi / 2, 0)
         scene.rootNode.addChildNode(leftNode)
         
-        // MARK: Right Plane (Optional)
-        // Uncomment to add the right face (X = +half, normal pointing right)
-        /*
-        let rightPlane = SCNPlane(width: size, height: size)
-        rightPlane.materials = twoSidedMaterials(
-            front: UIColor.systemTeal.withAlphaComponent(0.6),
-            back: UIColor.systemPink.withAlphaComponent(0.3)
-        )
-        let rightNode = SCNNode(geometry: rightPlane)
-        rightNode.position = SCNVector3(Float(half), 0, 0)
-        // Rotate +90° around Y axis to face +X direction
-        rightNode.eulerAngles = SCNVector3(0, Float.pi / 2, 0)
-        scene.rootNode.addChildNode(rightNode)
-        */
+        // MARK: Bottom Plane (5: Cyan)
+        let bottomPlane = SCNPlane(width: width, height: CGFloat(Float(depth)))
+        bottomPlane.materials = [createMaterial(color: UIColor(red: 0.0, green: 1.0, blue: 1.0, alpha: 1.0))]
+        let bottomNode = SCNNode(geometry: bottomPlane)
+        bottomNode.name = "bottomPlane"
+        bottomNode.position = SCNVector3(0, Float(-half_height), 0)
+        bottomNode.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
+        scene.rootNode.addChildNode(bottomNode)
         
         // MARK: Camera Setup
         let cameraNode = SCNNode()
