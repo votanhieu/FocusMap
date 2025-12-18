@@ -263,6 +263,10 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/FocusMap/HabitA/HabitA/functions/node_modules/@unrs/resolver-binding-darwin-x64",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.hieu.focusMap.FocusMap;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -294,6 +298,10 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/FocusMap/HabitA/HabitA/functions/node_modules/@unrs/resolver-binding-darwin-x64",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.hieu.focusMap.FocusMap;
