@@ -62,6 +62,18 @@ class GameViewController: UIViewController {
     /// UserDefaults key for persisting plane-to-image mappings
     let planeMappingsKey = "planeMappings"
     
+    /// Node representing the system image icon on the wall
+    var iconNode: SCNNode?
+    
+    /// Current position of the icon on the wall (UV coordinates 0.0 to 1.0)
+    var iconPosition: (x: Float, y: Float) = (0.5, 0.5)
+    
+    /// Movement control buttons
+    var movementButtons: [UIButton] = []
+    
+    /// Whether movement buttons are currently visible
+    var buttonsVisible: Bool = false
+    
     // MARK: - Lifecycle Methods
     
     override func viewDidLoad() {
@@ -94,6 +106,12 @@ class GameViewController: UIViewController {
         
         // Apply any previously saved images to the planes
         applyMappedImages()
+        
+        // Add icon to the back wall
+        addIconToWall()
+        
+        // Setup movement controls (initially hidden)
+        setupMovementControls()
     }
     
     // MARK: - Gesture Handlers
@@ -109,6 +127,12 @@ class GameViewController: UIViewController {
         
         for result in hitResults {
             let tappedNode = result.node
+            
+            // Check if icon was tapped
+            if tappedNode.name == "iconNode" {
+                toggleMovementButtons()
+                return
+            }
             
             // Verify the tapped node has valid geometry with materials
             guard let geometry = tappedNode.geometry else { continue }
@@ -325,6 +349,175 @@ class GameViewController: UIViewController {
             material.isDoubleSided = true // Visible from both sides
             geometry.materials = [material]
         }
+    }
+    
+    // MARK: - Icon on Wall
+    
+    /// Adds a system image icon positioned on the back wall
+    func addIconToWall() {
+        guard let scene = sceneView?.scene else { return }
+        
+        // Remove existing icon if present
+        iconNode?.removeFromParentNode()
+        
+        // Create a plane with a system image
+        let iconSize: CGFloat = 0.3
+        let iconPlane = SCNPlane(width: iconSize, height: iconSize)
+        
+        // Create the system image icon
+        if let systemImage = UIImage(systemName: "mappin.circle.fill") {
+            let material = SCNMaterial()
+            material.diffuse.contents = systemImage
+            material.isDoubleSided = true
+            iconPlane.materials = [material]
+        }
+        
+        let newIconNode = SCNNode(geometry: iconPlane)
+        newIconNode.name = "iconNode"
+        
+        // Position on back wall (center initially)
+        updateIconPosition()
+        
+        scene.rootNode.addChildNode(newIconNode)
+        iconNode = newIconNode
+    }
+    
+    /// Updates icon position on the wall based on iconPosition coordinates
+    func updateIconPosition() {
+        guard let iconNode = iconNode else { return }
+        
+        // Wall bounds: width 4.0, height 3.0, positioned at z = -1.0
+        let wallWidth: Float = 4.0
+        let wallHeight: Float = 3.0
+        let wallZ: Float = -0.95 // Slightly in front of back wall
+        
+        // Convert normalized position (0.0-1.0) to wall coordinates
+        let x = (iconPosition.x - 0.5) * wallWidth
+        let y = (0.5 - iconPosition.y) * wallHeight // Flip Y for intuitive movement
+        
+        iconNode.position = SCNVector3(x, y, wallZ)
+    }
+    
+    /// Moves the icon in the specified direction with boundary checking
+    /// - Parameter direction: Direction to move ("up", "down", "left", "right")
+    func moveIcon(_ direction: String) {
+        let moveAmount: Float = 0.05 // Movement step
+        
+        // Update position based on direction
+        switch direction {
+        case "up":
+            iconPosition.y = max(0.1, iconPosition.y - moveAmount)
+        case "down":
+            iconPosition.y = min(0.9, iconPosition.y + moveAmount)
+        case "left":
+            iconPosition.x = max(0.1, iconPosition.x - moveAmount)
+        case "right":
+            iconPosition.x = min(0.9, iconPosition.x + moveAmount)
+        default:
+            return
+        }
+        
+        updateIconPosition()
+    }
+    
+    /// Sets up movement control buttons (clustered together, initially hidden)
+    func setupMovementControls() {
+        let buttonSize: CGFloat = 80
+        let distance: CGFloat = 50 // Distance from center to button center
+        let centerX: CGFloat = view.bounds.maxX - 100
+        let centerY: CGFloat = view.bounds.maxY - 150
+        
+        // Up button (top of cluster)
+        let upButton = createControlButton(title: "↑", action: #selector(upButtonTapped))
+        upButton.frame = CGRect(x: centerX - buttonSize/2, y: centerY - distance - buttonSize/2, width: buttonSize, height: buttonSize)
+        movementButtons.append(upButton)
+        view.addSubview(upButton)
+        
+        // Down button (bottom of cluster)
+        let downButton = createControlButton(title: "↓", action: #selector(downButtonTapped))
+        downButton.frame = CGRect(x: centerX - buttonSize/2, y: centerY + distance - buttonSize/2, width: buttonSize, height: buttonSize)
+        movementButtons.append(downButton)
+        view.addSubview(downButton)
+        
+        // Left button (left of cluster)
+        let leftButton = createControlButton(title: "←", action: #selector(leftButtonTapped))
+        leftButton.frame = CGRect(x: centerX - distance - buttonSize/2, y: centerY - buttonSize/2, width: buttonSize, height: buttonSize)
+        movementButtons.append(leftButton)
+        view.addSubview(leftButton)
+        
+        // Right button (right of cluster)
+        let rightButton = createControlButton(title: "→", action: #selector(rightButtonTapped))
+        rightButton.frame = CGRect(x: centerX + distance - buttonSize/2, y: centerY - buttonSize/2, width: buttonSize, height: buttonSize)
+        movementButtons.append(rightButton)
+        view.addSubview(rightButton)
+        
+        // Hide all buttons initially
+        hideMovementButtons()
+    }
+    
+    /// Shows the movement buttons
+    func showMovementButtons() {
+        buttonsVisible = true
+        for button in movementButtons {
+            button.alpha = 0
+            button.isHidden = false
+            UIView.animate(withDuration: 0.2) {
+                button.alpha = 1.0
+            }
+        }
+    }
+    
+    /// Hides the movement buttons
+    func hideMovementButtons() {
+        buttonsVisible = false
+        for button in movementButtons {
+            UIView.animate(withDuration: 0.2, animations: {
+                button.alpha = 0
+            }) { _ in
+                button.isHidden = true
+            }
+        }
+    }
+    
+    /// Toggles visibility of movement buttons
+    func toggleMovementButtons() {
+        if buttonsVisible {
+            hideMovementButtons()
+        } else {
+            showMovementButtons()
+        }
+    }
+    
+    /// Creates a control button with the specified title and action
+    /// - Parameters:
+    ///   - title: Text/symbol to display on button
+    ///   - action: Selector for button tap action
+    /// - Returns: Configured UIButton
+    private func createControlButton(title: String, action: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 24, weight: .bold)
+        button.tintColor = .white
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        button.layer.cornerRadius = 25
+        button.addTarget(self, action: action, for: .touchUpInside)
+        return button
+    }
+    
+    @objc func upButtonTapped() {
+        moveIcon("up")
+    }
+    
+    @objc func downButtonTapped() {
+        moveIcon("down")
+    }
+    
+    @objc func leftButtonTapped() {
+        moveIcon("left")
+    }
+    
+    @objc func rightButtonTapped() {
+        moveIcon("right")
     }
 }
 
