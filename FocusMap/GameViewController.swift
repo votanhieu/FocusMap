@@ -83,18 +83,17 @@ class GameViewController: UIViewController {
     
     // Icon Management
     
-    /// Node representing the system image icon positioned on the back wall
-    var iconNode: SCNNode?
+    /// Array of all icon nodes currently positioned on the back wall
+    /// Each icon can be independently moved and deleted
+    var iconNodes: [SCNNode] = []
     
-    /// Current position of the icon on the wall using normalized coordinates (0.0 to 1.0)
-    /// Where (0.5, 0.5) is the center of the wall
-    /// x: 0.0 (left edge) to 1.0 (right edge)
-    /// y: 0.0 (bottom edge) to 1.0 (top edge)
-    var iconPosition: (x: Float, y: Float) = (0.5, 0.5)
+    /// Currently selected/focused icon node for movement and deletion operations
+    /// Only this icon responds to movement buttons and delete button
+    var focusedIconNode: SCNNode?
     
-    /// Current system icon name selected for the wall icon (SF Symbols)
-    /// Examples: "mappin.circle.fill", "star.fill", "heart.fill", etc.
-    var currentIconName: String = "mappin.circle.fill"
+    /// Minimum distance between icon centers to prevent overlapping
+    /// Used when generating random positions for new icons
+    let minIconSpacing: Float = 0.25 // Approximately 1 icon unit (0.3 * 0.3 icons)
     
     // Button Management
     
@@ -144,9 +143,6 @@ class GameViewController: UIViewController {
         // Apply any previously saved texture mappings to the planes
         applyMappedImages()
         
-        // Add the system icon to the back wall
-        addIconToWall()
-        
         // Setup movement controls (initially hidden until icon is tapped)
         setupMovementControls()
     }
@@ -168,8 +164,9 @@ class GameViewController: UIViewController {
             let tappedNode = result.node
             
             // MARK: Check if icon was tapped
-            // If the icon is tapped, toggle the movement button visibility
+            // If an icon is tapped, focus on it and toggle the movement button visibility
             if tappedNode.name == "iconNode" {
+                focusedIconNode = tappedNode
                 toggleMovementButtons()
                 return
             }
@@ -432,15 +429,21 @@ class GameViewController: UIViewController {
     
     // MARK: - Icon on Wall Management
     
-    /// Adds a system image icon positioned on the back wall
-    /// The icon is rendered as a plane with the current system icon image
-    /// Positioned based on the iconPosition coordinates
-    func addIconToWall() {
+    /// Adds a new system image icon to the back wall at the specified position
+    /// Checks for overlaps with existing icons to prevent stacking
+    /// If a valid position cannot be found, returns without adding icon
+    /// - Parameters:
+    ///   - position: Normalized position (0.0-1.0) on the wall
+    ///   - iconName: Name of the SF Symbol to display
+    func addIconToWall(at position: (x: Float, y: Float), with iconName: String) {
         guard let scene = sceneView?.scene else { return }
         
-        // MARK: Remove existing icon
-        // Clean up the previous icon if one exists
-        iconNode?.removeFromParentNode()
+        // MARK: Check for overlap with existing icons
+        // Prevent new icons from overlapping with existing ones
+        if isPositionOccupied(position: position) {
+            print("Position occupied, icon not added")
+            return
+        }
         
         // MARK: Create icon plane
         // Create a 2D plane to hold the system icon image
@@ -449,7 +452,7 @@ class GameViewController: UIViewController {
         
         // MARK: Create system image material
         // Load the system icon and apply it to the plane's material
-        if let systemImage = UIImage(systemName: currentIconName) {
+        if let systemImage = UIImage(systemName: iconName) {
             let material = SCNMaterial()
             material.diffuse.contents = systemImage
             material.isDoubleSided = true // Visible from both sides
@@ -460,93 +463,105 @@ class GameViewController: UIViewController {
         let newIconNode = SCNNode(geometry: iconPlane)
         newIconNode.name = "iconNode"
         
-        // Position on back wall based on current position
-        updateIconPosition()
-        
-        scene.rootNode.addChildNode(newIconNode)
-        iconNode = newIconNode
-    }
-    
-    /// Updates the wall icon with the current selected icon name
-    /// Removes the old icon and creates a new one with the updated icon image
-    /// Preserves the icon's position on the wall
-    func updateWallIcon() {
-        guard let scene = sceneView?.scene else { return }
-        
-        // MARK: Remove existing icon
-        // Clean up the previous icon
-        iconNode?.removeFromParentNode()
-        
-        // MARK: Create new icon plane
-        // Create a new plane with the updated system image
-        let iconSize: CGFloat = 0.3
-        let iconPlane = SCNPlane(width: iconSize, height: iconSize)
-        
-        // MARK: Load new system image
-        if let systemImage = UIImage(systemName: currentIconName) {
-            let material = SCNMaterial()
-            material.diffuse.contents = systemImage
-            material.isDoubleSided = true
-            iconPlane.materials = [material]
-        }
-        
-        // MARK: Create and position new icon node
-        let newIconNode = SCNNode(geometry: iconPlane)
-        newIconNode.name = "iconNode"
-        
-        // Restore the previous position
-        updateIconPosition()
-        
-        scene.rootNode.addChildNode(newIconNode)
-        iconNode = newIconNode
-    }
-    
-    /// Updates icon position on the wall based on iconPosition coordinates
-    /// Converts normalized coordinates (0.0-1.0) to wall space coordinates
-    /// Constrains position to stay within wall bounds with padding
-    func updateIconPosition() {
-        guard let iconNode = iconNode else { return }
-        
-        // MARK: Define wall bounds
-        // Wall dimensions: width 4.0, height 3.0, positioned at z = -1.0
+        // Convert normalized position to world coordinates and set
         let wallWidth: Float = 4.0
         let wallHeight: Float = 3.0
-        let wallZ: Float = -0.95 // Slightly in front of back wall to prevent z-fighting
+        let wallZ: Float = -0.95
+        let x = (position.x - 0.5) * wallWidth
+        let y = (0.5 - position.y) * wallHeight
+        newIconNode.position = SCNVector3(x, y, wallZ)
         
-        // MARK: Convert normalized position to wall coordinates
-        // Map (0.0-1.0) range to actual wall coordinates
-        // X: left (-2.0) to right (2.0)
-        // Y: bottom (-1.5) to top (1.5)
-        let x = (iconPosition.x - 0.5) * wallWidth
-        let y = (0.5 - iconPosition.y) * wallHeight // Flip Y for intuitive top-down mapping
+        // Add to scene and tracking array
+        scene.rootNode.addChildNode(newIconNode)
+        iconNodes.append(newIconNode)
         
-        iconNode.position = SCNVector3(x, y, wallZ)
+        // Focus on the newly created icon
+        focusedIconNode = newIconNode
     }
     
-    /// Moves the icon in the specified direction with boundary checking
+    /// Checks if a position on the wall is already occupied by an existing icon
+    /// Calculates the distance between the proposed position and all existing icons
+    /// Returns true if any existing icon is closer than minIconSpacing
+    /// - Parameter position: Normalized position (0.0-1.0) to check
+    /// - Returns: True if position is occupied, false if available
+    func isPositionOccupied(position: (x: Float, y: Float)) -> Bool {
+        for iconNode in iconNodes {
+            // MARK: Calculate distance between positions
+            // Get the icon's current position and convert to normalized coordinates
+            let iconX = (iconNode.position.x / 4.0) + 0.5
+            let iconY = 0.5 - (iconNode.position.y / 3.0)
+            
+            // MARK: Check if distance is less than minimum spacing
+            let distance = sqrt(pow(position.x - iconX, 2) + pow(position.y - iconY, 2))
+            if distance < minIconSpacing {
+                return true
+            }
+        }
+        return false
+    }
+    
+    /// Generates a random position on the wall that doesn't overlap with existing icons
+    /// Attempts up to 10 random positions before giving up
+    /// - Returns: A valid position (0.0-1.0 normalized), or nil if no position found
+    func generateValidIconPosition() -> (x: Float, y: Float)? {
+        let maxAttempts = 10
+        
+        for _ in 0..<maxAttempts {
+            // MARK: Generate random position with padding
+            // Avoid edges (0.15-0.85 range) to keep icons visible
+            let position = (
+                x: Float.random(in: 0.15..<0.85),
+                y: Float.random(in: 0.15..<0.85)
+            )
+            
+            // MARK: Check if position is available
+            if !isPositionOccupied(position: position) {
+                return position
+            }
+        }
+        
+        return nil
+    }
+    
+    /// Moves the focused icon in the specified direction with boundary checking
     /// Prevents the icon from moving beyond the wall edges
     /// Movement increment is 0.05 (5% of wall width/height)
     /// - Parameter direction: Direction to move ("up", "down", "left", "right")
     func moveIcon(_ direction: String) {
+        guard let focusedIconNode = focusedIconNode else { return }
+        
         let moveAmount: Float = 0.05 // Movement step (5% of wall)
+        
+        // MARK: Get current normalized position
+        let currentX = (focusedIconNode.position.x / 4.0) + 0.5
+        let currentY = 0.5 - (focusedIconNode.position.y / 3.0)
+        
+        var newX = currentX
+        var newY = currentY
         
         // MARK: Update position based on direction
         // Apply movement with boundary constraints (10%-90% of wall)
         switch direction {
         case "up":
-            iconPosition.y = max(0.1, iconPosition.y - moveAmount)
+            newY = max(0.1, currentY - moveAmount)
         case "down":
-            iconPosition.y = min(0.9, iconPosition.y + moveAmount)
+            newY = min(0.9, currentY + moveAmount)
         case "left":
-            iconPosition.x = max(0.1, iconPosition.x - moveAmount)
+            newX = max(0.1, currentX - moveAmount)
         case "right":
-            iconPosition.x = min(0.9, iconPosition.x + moveAmount)
+            newX = min(0.9, currentX + moveAmount)
         default:
             return
         }
         
-        // MARK: Update visual position
-        updateIconPosition()
+        // MARK: Update icon position in 3D space
+        let wallWidth: Float = 4.0
+        let wallHeight: Float = 3.0
+        let wallZ: Float = -0.95
+        let x = (newX - 0.5) * wallWidth
+        let y = (0.5 - newY) * wallHeight
+        
+        focusedIconNode.position = SCNVector3(x, y, wallZ)
     }
     
     // MARK: - Movement Controls UI
@@ -670,11 +685,19 @@ class GameViewController: UIViewController {
         moveIcon("right")
     }
     
-    /// Handle delete button tap - remove the icon from the wall
+    /// Handle delete button tap - remove the focused icon from the wall
     @objc func deleteIconButtonTapped() {
-        // MARK: Remove icon from scene
-        iconNode?.removeFromParentNode()
-        iconNode = nil
+        guard let focusedIconNode = focusedIconNode else { return }
+        
+        // MARK: Remove focused icon from scene
+        focusedIconNode.removeFromParentNode()
+        
+        // MARK: Remove from tracking array
+        iconNodes.removeAll { $0 == focusedIconNode }
+        
+        // MARK: Clear focus and hide buttons
+        self.focusedIconNode = nil
+        hideMovementButtons()
     }
 }
 
@@ -893,13 +916,15 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
             
             let selectedIconName = iconNames[indexPath.item]
             
-            // MARK: Create new icon at random position
-            // Generate a random position within the safe area of the wall
-            delegate?.iconPosition = (x: Float.random(in: 0.2..<0.8), y: Float.random(in: 0.2..<0.8))
-            
-            // MARK: Update icon and render
-            delegate?.currentIconName = selectedIconName
-            delegate?.addIconToWall()
+            // MARK: Generate valid position for new icon
+            // Find a position that doesn't overlap with existing icons
+            if let validPosition = delegate?.generateValidIconPosition() {
+                // MARK: Create new icon at valid position
+                delegate?.addIconToWall(at: validPosition, with: selectedIconName)
+            } else {
+                // MARK: No valid position found - warn user
+                print("No valid position found for new icon - wall may be full")
+            }
             
             // MARK: Close the modal
             dismiss(animated: true)
