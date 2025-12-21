@@ -378,11 +378,13 @@ class GameViewController: UIViewController {
         // The modal will automatically configure based on game state
         
         // MARK: Configure bottom sheet presentation
-        // Present as a half-sheet modal with grab handle (iOS 15+)
+        // Present as a bottom sheet with grab handle (iOS 15+)
         if #available(iOS 15.0, *) {
             if let sheet = imagePickerVC.sheetPresentationController {
-                sheet.detents = [.custom(resolver: { _ in 350 })] // Height to fit all collections
+                // Use medium detent for optimal sizing that fits all content without scrolling
+                sheet.detents = [.medium()]
                 sheet.prefersGrabberVisible = true // Show drag handle for user awareness
+                sheet.prefersScrollingExpandsWhenScrolledToEdge = false // Prevent unwanted expansion
             }
         }
         
@@ -929,27 +931,97 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
     
     /// Builds the UI from the configured collections
     private func setupUI() {
-        // MARK: Setup stack view
-        stackView.axis = .vertical
-        stackView.spacing = 0
-        stackView.distribution = .fillEqually
+        // MARK: Create scroll view for scrollable content
+        let scrollView = UIScrollView()
+        scrollView.showsVerticalScrollIndicator = true
+        scrollView.showsHorizontalScrollIndicator = false
         
-        view.addSubview(stackView)
+        view.addSubview(scrollView)
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        
+        // MARK: Setup stack view inside scroll view
+        stackView.axis = .vertical
+        stackView.spacing = 16
+        stackView.distribution = .fill
+        
+        scrollView.addSubview(stackView)
         stackView.translatesAutoresizingMaskIntoConstraints = false
         
         NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: view.topAnchor),
-            stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            stackView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            stackView.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 12),
+            stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            stackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -12),
+            stackView.widthAnchor.constraint(equalTo: scrollView.widthAnchor)
         ])
         
         // MARK: Create and add collection views for each collection
         for collection in collections {
-            let collectionView = createCollectionView(for: collection)
-            collectionViewMap[collection.id] = collectionView
-            stackView.addArrangedSubview(collectionView)
+            let containerView = createCollectionContainer(for: collection)
+            stackView.addArrangedSubview(containerView)
         }
+    }
+    
+    /// Creates a container view with a title and collection view
+    /// - Parameter collection: The PickerCollection to create a container for
+    /// - Returns: Container UIView with title and collection view
+    private func createCollectionContainer(for collection: PickerCollection) -> UIView {
+        let container = UIView()
+        
+        // MARK: Title label
+        let titleLabel = UILabel()
+        titleLabel.text = collection.title
+        titleLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.textColor = .label
+        titleLabel.numberOfLines = 0
+        titleLabel.lineBreakMode = .byWordWrapping
+        container.addSubview(titleLabel)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // MARK: Collection view
+        let collectionView = createCollectionView(for: collection)
+        collectionViewMap[collection.id] = collectionView
+        container.addSubview(collectionView)
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // MARK: Calculate collection view height to show all items
+        // Calculate based on available screen width to fit items horizontally
+        let screenWidth = UIScreen.main.bounds.width
+        let itemSize: CGFloat = 50
+        let itemSpacing: CGFloat = 8
+        let sectionInsets: CGFloat = 32 // 16 left + 16 right
+        let availableWidth = screenWidth - sectionInsets
+        
+        let itemCount = collection.items.count
+        let itemsPerRow = floor(availableWidth / (itemSize + itemSpacing))
+        let rows = CGFloat(ceil(Double(itemCount) / Double(itemsPerRow)))
+        let lineSpacing: CGFloat = 8
+        
+        let collectionViewHeight = rows * (itemSize + lineSpacing) + 16 // 8 top + 8 bottom padding
+        
+        // MARK: Apply constraints
+        NSLayoutConstraint.activate([
+            // Title constraints
+            titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
+            titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            
+            // Collection view constraints
+            collectionView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            collectionView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            collectionView.heightAnchor.constraint(equalToConstant: collectionViewHeight)
+        ])
+        
+        return container
     }
     
     /// Creates a configured collection view for the given PickerCollection
@@ -957,10 +1029,10 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
     /// - Returns: Configured UICollectionView
     private func createCollectionView(for collection: PickerCollection) -> UICollectionView {
         let layout = UICollectionViewFlowLayout()
-        layout.scrollDirection = .horizontal
-        layout.itemSize = CGSize(width: 120, height: 120)
-        layout.minimumInteritemSpacing = 16
-        layout.minimumLineSpacing = 0
+        layout.scrollDirection = .vertical
+        layout.itemSize = CGSize(width: 50, height: 50)
+        layout.minimumInteritemSpacing = 8
+        layout.minimumLineSpacing = 8
         layout.sectionInset = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
@@ -969,7 +1041,7 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
         collectionView.showsHorizontalScrollIndicator = false
         collectionView.showsVerticalScrollIndicator = false
         collectionView.backgroundColor = .systemBackground
-        collectionView.isScrollEnabled = true
+        collectionView.isScrollEnabled = false // Disabled to prevent internal scrolling
         collectionView.register(collection.cellType, forCellWithReuseIdentifier: collection.cellIdentifier)
         
         // Tag the collection view with the collection ID for identification
@@ -1040,7 +1112,6 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
     private func handleSelection(_ selectedItem: String) {
         // Find which collection this selection came from
         guard let collection = collections.first(where: { $0.items.contains(selectedItem) }) else {
-            dismiss(animated: true)
             return
         }
         
@@ -1058,7 +1129,6 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
     private func handleWallSelection(_ wallName: String) {
         // MARK: Ensure a plane is selected
         guard let planeName = delegate?.selectedPlaneNode?.name else {
-            dismiss(animated: true)
             return
         }
         
@@ -1074,8 +1144,7 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
         // MARK: Apply image to plane
         delegate?.applyImageToNode(delegate!.selectedPlaneNode!, imageName: wallName)
         
-        // MARK: Close the modal
-        dismiss(animated: true)
+        // MARK: Keep the modal open - do not dismiss
     }
     
     /// Handles window icon selection
@@ -1090,8 +1159,7 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
             print("No valid position found for new icon - wall may be full")
         }
         
-        // MARK: Close the modal
-        dismiss(animated: true)
+        // MARK: Keep the modal open - do not dismiss
     }
 }
 
@@ -1134,15 +1202,15 @@ class ImagePickerCell: UICollectionViewCell {
         contentView.addSubview(selectionIndicator)
         
         // MARK: Configure image view
-        imageView.contentMode = .scaleAspectFill // Fill the cell while maintaining aspect ratio
+        imageView.contentMode = .scaleAspectFit // Scale to fit while maintaining aspect ratio
         imageView.clipsToBounds = true
-        imageView.layer.cornerRadius = 8
+        imageView.layer.cornerRadius = 4
         imageView.backgroundColor = .systemGray6 // Placeholder background color
         
         // MARK: Configure selection indicator
         selectionIndicator.layer.borderColor = UIColor.systemBlue.cgColor
-        selectionIndicator.layer.borderWidth = 3 // Visible blue border
-        selectionIndicator.layer.cornerRadius = 8
+        selectionIndicator.layer.borderWidth = 2 // Visible blue border
+        selectionIndicator.layer.cornerRadius = 4
         selectionIndicator.isHidden = true // Hidden until selected
         
         // MARK: Enable Auto Layout
@@ -1152,10 +1220,10 @@ class ImagePickerCell: UICollectionViewCell {
         // MARK: Apply constraints
         NSLayoutConstraint.activate([
             // Image view with padding from content view
-            imageView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
-            imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
-            imageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            imageView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 2),
+            imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 2),
+            imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -2),
+            imageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -2),
             
             // Selection indicator overlays the image
             selectionIndicator.topAnchor.constraint(equalTo: imageView.topAnchor),
@@ -1217,15 +1285,15 @@ class IconSelectorCell: UICollectionViewCell {
         contentView.addSubview(selectionIndicator)
         
         // MARK: Configure icon view
-        iconView.contentMode = .scaleAspectFill // Fill the cell while maintaining aspect ratio
+        iconView.contentMode = .scaleAspectFit // Scale to fit while maintaining aspect ratio
         iconView.clipsToBounds = true
         iconView.backgroundColor = .systemGray6 // Background color
-        iconView.layer.cornerRadius = 8
+        iconView.layer.cornerRadius = 4
         
         // MARK: Configure selection indicator
         selectionIndicator.layer.borderColor = UIColor.systemBlue.cgColor
-        selectionIndicator.layer.borderWidth = 3
-        selectionIndicator.layer.cornerRadius = 8
+        selectionIndicator.layer.borderWidth = 2
+        selectionIndicator.layer.cornerRadius = 4
         selectionIndicator.isHidden = true // Hidden until selected
         
         // MARK: Enable Auto Layout
@@ -1235,10 +1303,10 @@ class IconSelectorCell: UICollectionViewCell {
         // MARK: Apply constraints
         NSLayoutConstraint.activate([
             // Icon view with padding from content view
-            iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
-            iconView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
-            iconView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 2),
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 2),
+            iconView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -2),
+            iconView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -2),
             
             // Selection indicator overlays the icon
             selectionIndicator.topAnchor.constraint(equalTo: iconView.topAnchor),
@@ -1259,4 +1327,3 @@ class IconSelectorCell: UICollectionViewCell {
         selectionIndicator.isHidden = !isSelected
     }
 }
-
