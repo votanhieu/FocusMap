@@ -450,11 +450,11 @@ class GameViewController: UIViewController {
         let iconSize: CGFloat = 0.3
         let iconPlane = SCNPlane(width: iconSize, height: iconSize)
         
-        // MARK: Create system image material
-        // Load the system icon and apply it to the plane's material
-        if let systemImage = UIImage(systemName: iconName) {
+        // MARK: Create window image material
+        // Load the window image from Assets and apply it to the plane's material
+        if let windowImage = UIImage(named: iconName) {
             let material = SCNMaterial()
-            material.diffuse.contents = systemImage
+            material.diffuse.contents = windowImage
             material.isDoubleSided = true // Visible from both sides
             iconPlane.materials = [material]
         }
@@ -736,25 +736,9 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
     /// Generates names like "wall1", "wall2", ..., "wall15"
     let imageNames = (1...15).map { "wall\($0)" }
     
-    /// List of available system icon names (SF Symbols)
-    /// Includes a diverse set of icons for various uses
-    let iconNames = [
-        "mappin.circle.fill",      // Location/map pin
-        "star.fill",               // Star/favorite
-        "heart.fill",              // Heart/love
-        "sun.max.fill",            // Sun/light
-        "moon.fill",               // Moon/night
-        "cloud.fill",              // Cloud/weather
-        "bolt.fill",               // Lightning/electricity
-        "flame.fill",              // Fire/heat
-        "snow",                    // Snow/cold
-        "wind",                    // Wind/air
-        "raincloud.fill",          // Rain/precipitation
-        "checkmark.circle.fill",   // Check/complete
-        "xmark.circle.fill",       // X/close
-        "questionmark.circle.fill",// Question/help
-        "exclamationmark.circle.fill" // Exclamation/alert
-    ]
+    /// List of available window image asset names
+    /// Generates names like "window1", "window2", ..., "window68" from Assets
+    let iconNames = (1...68).map { "window\($0)" }
     
     // UI Components
     
@@ -1016,19 +1000,19 @@ class ImagePickerCell: UICollectionViewCell {
 
 // MARK: - Icon Selector Cell
 
-/// Custom collection view cell for displaying selectable system icons
+/// Custom collection view cell for displaying selectable window images
 ///
 /// Visual features:
-/// - Displays a system icon (SF Symbols)
+/// - Displays a window image from Assets
 /// - Shows a blue border selection indicator when selected
-/// - Uses tint color to colorize the icon
+/// - Uses aspect fill to show the image
 /// - Matches the visual style of ImagePickerCell
 ///
 class IconSelectorCell: UICollectionViewCell {
     
     // MARK: - Properties
     
-    /// Image view for displaying the system icon
+    /// Image view for displaying the window image
     private let iconView = UIImageView()
     
     /// Visual indicator (blue border) shown when the cell is selected
@@ -1054,11 +1038,10 @@ class IconSelectorCell: UICollectionViewCell {
         contentView.addSubview(selectionIndicator)
         
         // MARK: Configure icon view
-        iconView.contentMode = .scaleAspectFit // Center and scale icon
-        iconView.tintColor = .systemBlue // Color the system icon blue
+        iconView.contentMode = .scaleAspectFill // Fill the cell while maintaining aspect ratio
+        iconView.clipsToBounds = true
         iconView.backgroundColor = .systemGray6 // Background color
         iconView.layer.cornerRadius = 8
-        iconView.clipsToBounds = true
         
         // MARK: Configure selection indicator
         selectionIndicator.layer.borderColor = UIColor.systemBlue.cgColor
@@ -1088,12 +1071,12 @@ class IconSelectorCell: UICollectionViewCell {
     
     // MARK: - Configuration
     
-    /// Configures the cell with a system icon and selection state
+    /// Configures the cell with a window image and selection state
     /// - Parameters:
-    ///   - iconName: Name of the SF Symbol to display
+    ///   - iconName: Name of the window image asset to display
     ///   - isSelected: Whether the cell is currently selected
     func configure(with iconName: String, isSelected: Bool) {
-        iconView.image = UIImage(systemName: iconName)
+        iconView.image = UIImage(named: iconName)
         selectionIndicator.isHidden = !isSelected
     }
 }
