@@ -427,6 +427,12 @@ class GameViewController: UIViewController {
     // MARK: - Icon on Wall Management
     
     /// Adds a new system image icon to the back wall at the specified position
+    /// Icons are created at small size by default based on architectural proportions
+    /// Wall dimensions: 4.0 (width) x 3.0 (height) = 12.0 sq units
+    /// Size proportions following interior design standards:
+    /// - Small: 1.5 scale - small windows
+    /// - Medium: 2.5 scale - standard/feature window size
+    /// - Big: 4.0 scale - large dominant feature
     /// Checks for overlaps with existing icons to prevent stacking
     /// If a valid position cannot be found, returns without adding icon
     /// - Parameters:
@@ -442,10 +448,11 @@ class GameViewController: UIViewController {
             return
         }
         
-        // MARK: Create icon plane
-        // Create a 2D plane to hold the system icon image
-        let iconSize: CGFloat = 0.3
-        let iconPlane = SCNPlane(width: iconSize, height: iconSize)
+        // MARK: Create icon plane with base size
+        // Base size (0.3 x 0.3) represents medium window proportions
+        // Will be scaled to small (0.4x) by default after creation
+        let baseIconSize: CGFloat = 0.3
+        let iconPlane = SCNPlane(width: baseIconSize, height: baseIconSize)
         
         // MARK: Create window image material
         // Load the window image from Assets and apply it to the plane's material
@@ -467,6 +474,12 @@ class GameViewController: UIViewController {
         let x = (position.x - 0.5) * wallWidth
         let y = (0.5 - position.y) * wallHeight
         newIconNode.position = SCNVector3(x, y, wallZ)
+        
+        // MARK: Set default size to small
+        // Apply small scale (1.5x) by default for new icons
+        // This represents a small window, following interior design standards
+        let smallScale: CGFloat = 1.5
+        newIconNode.scale = SCNVector3(smallScale, smallScale, smallScale)
         
         // Add to scene and tracking array
         scene.rootNode.addChildNode(newIconNode)
@@ -566,8 +579,10 @@ class GameViewController: UIViewController {
     /// Sets up movement control buttons arranged in a D-pad cluster
     /// Buttons are initially hidden and show when the icon is tapped
     /// Layout: up/down/left/right for movement attached to edges of center button
+    /// Additional controls: delete (text), size buttons (small, medium, big)
     func setupMovementControls() {
         let buttonSize: CGFloat = 50 // Size of each button
+        let smallButtonHeight: CGFloat = 32 // Smaller height for text buttons
         let distance: CGFloat = 50 // Distance from center to button center (buttonSize / 2, so buttons touch edges)
         let centerX: CGFloat = view.bounds.maxX - 100 // Position in bottom-right area
         let centerY: CGFloat = view.bounds.maxY - 150
@@ -602,11 +617,34 @@ class GameViewController: UIViewController {
         movementButtons.append(centerButton)
         view.addSubview(centerButton)
         
-        // MARK: Delete button (left side, separate from D-pad)
-        let deleteButton = createControlButton(title: "−", action: #selector(deleteIconButtonTapped))
-        deleteButton.frame = CGRect(x: centerX - 180 - buttonSize/2, y: centerY - buttonSize/2, width: buttonSize, height: buttonSize)
+        // MARK: Control buttons cluster (delete, small, medium, big)
+        // Positioned on the left side as a vertical stack
+        let controlButtonX = centerX - 180
+        let controlButtonSpacing: CGFloat = smallButtonHeight + 4
+        
+        // Delete button (top)
+        let deleteButton = createTextButton(title: "delete", fontSize: 12, action: #selector(deleteIconButtonTapped))
+        deleteButton.frame = CGRect(x: controlButtonX - 50, y: centerY - buttonSize/2 - controlButtonSpacing - controlButtonSpacing, width: 100, height: smallButtonHeight)
         movementButtons.append(deleteButton)
         view.addSubview(deleteButton)
+        
+        // Small size button
+        let smallButton = createTextButton(title: "small", fontSize: 11, action: #selector(smallSizeButtonTapped))
+        smallButton.frame = CGRect(x: controlButtonX - 30, y: centerY - buttonSize/2 - controlButtonSpacing, width: 60, height: smallButtonHeight)
+        movementButtons.append(smallButton)
+        view.addSubview(smallButton)
+        
+        // Medium size button
+        let mediumButton = createTextButton(title: "medium", fontSize: 11, action: #selector(mediumSizeButtonTapped))
+        mediumButton.frame = CGRect(x: controlButtonX - 30, y: centerY - buttonSize/2, width: 60, height: smallButtonHeight)
+        movementButtons.append(mediumButton)
+        view.addSubview(mediumButton)
+        
+        // Big size button
+        let bigButton = createTextButton(title: "big", fontSize: 11, action: #selector(bigSizeButtonTapped))
+        bigButton.frame = CGRect(x: controlButtonX - 30, y: centerY - buttonSize/2 + controlButtonSpacing, width: 60, height: smallButtonHeight)
+        movementButtons.append(bigButton)
+        view.addSubview(bigButton)
         
         // MARK: Hide all buttons initially
         // Buttons appear only when the icon is tapped
@@ -668,6 +706,31 @@ class GameViewController: UIViewController {
         return button
     }
     
+    /// Creates a text-labeled button with the specified title and action
+    /// Buttons have a semi-transparent black background with white text
+    /// Used for delete and size control buttons
+    /// - Parameters:
+    ///   - title: Text to display on button
+    ///   - fontSize: Font size for the button text
+    ///   - action: Selector for button tap action (optional)
+    /// - Returns: Configured UIButton ready to be added to the view hierarchy
+    private func createTextButton(title: String, fontSize: CGFloat, action: Selector?) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+        button.titleLabel?.numberOfLines = 1
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.7
+        button.tintColor = .white // White text
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.6) // Semi-transparent black
+        button.layer.cornerRadius = 8
+        button.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+        if let action {
+            button.addTarget(self, action: action, for: .touchUpInside)
+        }
+        return button
+    }
+    
     // MARK: - Button Action Handlers
     
     /// Handle up button tap - move icon up on the wall
@@ -708,6 +771,48 @@ class GameViewController: UIViewController {
         // MARK: Clear focus and hide buttons
         self.focusedIconNode = nil
         hideMovementButtons()
+    }
+    
+    /// Handle small size button tap - scale focused icon to small size
+    /// Small scale: 1.5x - represents small windows
+    /// Based on interior design standards for accent/highlight windows
+    @objc func smallSizeButtonTapped() {
+        guard let focusedIconNode = focusedIconNode else { return }
+        
+        // MARK: Animate to small size (1.5 scale)
+        let smallScale: CGFloat = 1.5
+        SCNTransaction.begin()
+        SCNTransaction.animationDuration = 0.3
+        focusedIconNode.scale = SCNVector3(smallScale, smallScale, smallScale)
+        SCNTransaction.commit()
+    }
+    
+    /// Handle medium size button tap - scale focused icon to medium size
+    /// Medium scale: 2.5x - represents standard/feature window size
+    /// Based on interior design standards for typical architectural windows
+    @objc func mediumSizeButtonTapped() {
+        guard let focusedIconNode = focusedIconNode else { return }
+        
+        // MARK: Animate to medium size (2.5 scale)
+        let mediumScale: CGFloat = 2.5
+        SCNTransaction.begin()
+        SCNTransaction.animationDuration = 0.3
+        focusedIconNode.scale = SCNVector3(mediumScale, mediumScale, mediumScale)
+        SCNTransaction.commit()
+    }
+    
+    /// Handle big size button tap - scale focused icon to big size
+    /// Big scale: 4.0x - represents large dominant architectural feature
+    /// Based on interior design standards for major focal points
+    @objc func bigSizeButtonTapped() {
+        guard let focusedIconNode = focusedIconNode else { return }
+        
+        // MARK: Animate to big size (4.0 scale)
+        let bigScale: CGFloat = 4.0
+        SCNTransaction.begin()
+        SCNTransaction.animationDuration = 0.3
+        focusedIconNode.scale = SCNVector3(bigScale, bigScale, bigScale)
+        SCNTransaction.commit()
     }
 }
 
