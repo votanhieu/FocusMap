@@ -364,27 +364,24 @@ class GameViewController: UIViewController {
     
     // MARK: - Image and Icon Picker Modal
     
-    /// Presents the image/icon picker modal as a bottom sheet
-    /// The modal displays two collection views:
+    /// Presents the picker modal as a bottom sheet
+    /// The modal displays collection views for different selectable items:
     /// 1. Wall textures (15 available wall images)
-    /// 2. System icons (15 available SF Symbols)
+    /// 2. System icons (68 available window images)
     /// Users can select wall textures to apply to the tapped plane
-    /// or select icons to create new icons on the wall at random positions
+    /// or select icons to create new icons on the wall at valid positions
     func showImagePickerModal() {
         let imagePickerVC = ImagePickerModalViewController()
         imagePickerVC.delegate = self
         
-        // MARK: Pass currently selected image
-        // Pre-select the current texture applied to the tapped plane
-        if let planeName = selectedPlaneNode?.name {
-            imagePickerVC.selectedImageName = planeMappings[planeName]
-        }
+        // MARK: Initialize collections (setupCollections will be called in viewDidLoad)
+        // The modal will automatically configure based on game state
         
         // MARK: Configure bottom sheet presentation
         // Present as a half-sheet modal with grab handle (iOS 15+)
         if #available(iOS 15.0, *) {
             if let sheet = imagePickerVC.sheetPresentationController {
-                sheet.detents = [.custom(resolver: { _ in 350 })] // Height to fit both collections
+                sheet.detents = [.custom(resolver: { _ in 350 })] // Height to fit all collections
                 sheet.prefersGrabberVisible = true // Show drag handle for user awareness
             }
         }
@@ -568,10 +565,10 @@ class GameViewController: UIViewController {
     
     /// Sets up movement control buttons arranged in a D-pad cluster
     /// Buttons are initially hidden and show when the icon is tapped
-    /// Layout: up/down/left/right for movement, delete button on the left
+    /// Layout: up/down/left/right for movement attached to edges of center button
     func setupMovementControls() {
-        let buttonSize: CGFloat = 80 // Size of each button
-        let distance: CGFloat = 50 // Distance from center to button center
+        let buttonSize: CGFloat = 50 // Size of each button
+        let distance: CGFloat = 50 // Distance from center to button center (buttonSize / 2, so buttons touch edges)
         let centerX: CGFloat = view.bounds.maxX - 100 // Position in bottom-right area
         let centerY: CGFloat = view.bounds.maxY - 150
         
@@ -598,6 +595,12 @@ class GameViewController: UIViewController {
         rightButton.frame = CGRect(x: centerX + distance - buttonSize/2, y: centerY - buttonSize/2, width: buttonSize, height: buttonSize)
         movementButtons.append(rightButton)
         view.addSubview(rightButton)
+        
+        // MARK: Center button (center of D-pad) - prints log when tapped
+        let centerButton = createControlButton(title: "●", action: #selector(centerButtonTapped))
+        centerButton.frame = CGRect(x: centerX - buttonSize/2, y: centerY - buttonSize/2, width: buttonSize, height: buttonSize)
+        movementButtons.append(centerButton)
+        view.addSubview(centerButton)
         
         // MARK: Delete button (left side, separate from D-pad)
         let deleteButton = createControlButton(title: "−", action: #selector(deleteIconButtonTapped))
@@ -650,16 +653,18 @@ class GameViewController: UIViewController {
     /// Buttons have a semi-transparent black background with white text
     /// - Parameters:
     ///   - title: Text/symbol to display on button
-    ///   - action: Selector for button tap action
+    ///   - action: Selector for button tap action (optional)
     /// - Returns: Configured UIButton ready to be added to the view hierarchy
-    private func createControlButton(title: String, action: Selector) -> UIButton {
+    private func createControlButton(title: String, action: Selector?) -> UIButton {
         let button = UIButton(type: .system)
         button.setTitle(title, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 24, weight: .bold)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
         button.tintColor = .white // White text/symbols
         button.backgroundColor = UIColor.black.withAlphaComponent(0.6) // Semi-transparent black
-        button.layer.cornerRadius = 25 // Circular button
-        button.addTarget(self, action: action, for: .touchUpInside)
+        button.layer.cornerRadius = 12.5 // Circular button (50 / 2 = 25 for old size, 12.5 for new 50pt size)
+        if let action {
+            button.addTarget(self, action: action, for: .touchUpInside)
+        }
         return button
     }
     
@@ -685,6 +690,11 @@ class GameViewController: UIViewController {
         moveIcon("right")
     }
     
+    /// Handle center button tap - print log message
+    @objc func centerButtonTapped() {
+        print("Center button tapped")
+    }
+    
     /// Handle delete button tap - remove the focused icon from the wall
     @objc func deleteIconButtonTapped() {
         guard let focusedIconNode = focusedIconNode else { return }
@@ -701,18 +711,56 @@ class GameViewController: UIViewController {
     }
 }
 
+// MARK: - Picker Collection Type Enum
+
+/// Defines the different types of collections available in the picker modal
+/// Controls behavior, naming, and selection handling for each collection type
+enum PickerCollectionType {
+    case wall
+    case window
+    // Future: case shapes, case colors, etc.
+    
+    /// Display name for the collection
+    var title: String {
+        switch self {
+        case .wall: return "Walls"
+        case .window: return "Windows"
+        }
+    }
+    
+    /// Unique identifier for the collection
+    var id: String {
+        switch self {
+        case .wall: return "wall"
+        case .window: return "window"
+        }
+    }
+}
+
+// MARK: - Picker Collection Model
+
+/// Represents a single collection section in the picker modal
+/// Configured by PickerCollectionType enum for type-safe behavior
+struct PickerCollection {
+    let type: PickerCollectionType // Enum-based type for type-safe routing
+    let items: [String] // Asset names to display
+    let cellType: UICollectionViewCell.Type // Cell class to use
+    let cellIdentifier: String
+    let selectedItem: String? // Currently selected item
+    let onSelect: (String) -> Void // Callback when item is selected
+    
+    var id: String { type.id }
+    var title: String { type.title }
+}
+
 // MARK: - Image Picker Modal Controller
 
-/// Modal view controller for selecting wall textures and system icons
+/// Modal view controller for selecting collections (textures, icons, etc.)
 ///
 /// Responsibilities:
-/// - Displays two horizontal collection views:
-///   1. Wall texture images (15 wall texture options)
-///   2. System icons (15 SF Symbols options)
-/// - Handles texture selection and application to tapped plane
-/// - Handles icon selection and creation at random position
-/// - Persists plane-to-texture mappings
-///
+/// - Displays multiple horizontal collection views for different selection types
+/// - Supports flexible collection types and behaviors based on PickerCollection config
+/// - Handles selection callbacks dynamically
 class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate, UICollectionViewDataSource {
     
     // MARK: - Properties
@@ -722,33 +770,18 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
     /// Weak reference to parent GameViewController for delegating selections
     weak var delegate: GameViewController?
     
-    // Selection State
+    // Collections Configuration
     
-    /// Currently selected image name (for visual highlighting in wall collection)
-    var selectedImageName: String?
-    
-    /// Currently selected icon name (for visual highlighting in icon collection)
-    var selectedIconName: String?
-    
-    // Data Sources
-    
-    /// List of available wall texture image asset names
-    /// Generates names like "wall1", "wall2", ..., "wall15"
-    let imageNames = (1...15).map { "wall\($0)" }
-    
-    /// List of available window image asset names
-    /// Generates names like "window1", "window2", ..., "window68" from Assets
-    let iconNames = (1...68).map { "window\($0)" }
+    /// Array of all picker collections to display
+    var collections: [PickerCollection] = []
     
     // UI Components
     
-    /// Collection view for displaying selectable wall texture thumbnails
-    /// Scrolls horizontally with fixed height of 160pt
-    private let imageCollectionView = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
+    /// Stack view containing all collection views vertically
+    private let stackView = UIStackView()
     
-    /// Collection view for displaying selectable system icons
-    /// Scrolls horizontally with fixed height of 160pt
-    private let iconCollectionView = UICollectionView(frame: .zero, collectionViewLayout: UICollectionViewFlowLayout())
+    /// Dictionary mapping collection IDs to their collection view instances
+    private var collectionViewMap: [String: UICollectionView] = [:]
     
     // MARK: - Lifecycle Methods
     
@@ -757,162 +790,203 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
         super.viewDidLoad()
         
         view.backgroundColor = .systemBackground
-        setupCollectionView()
+        setupCollections()
+        setupUI()
     }
     
     // MARK: - Setup Methods
     
-    /// Configures both collection views with layouts, delegates, and constraints
-    /// Sets up the hierarchy: image collection on top, icon collection below
-    private func setupCollectionView() {
-        // MARK: Image collection view setup
+    /// Configures the collections based on current game state
+    /// Should be called before setupUI()
+    private func setupCollections() {
+        // MARK: Wall collection
+        let wallCollection = PickerCollection(
+            type: .wall,
+            items: (1...15).map { "wall\($0)" },
+            cellType: ImagePickerCell.self,
+            cellIdentifier: "imageCell",
+            selectedItem: delegate?.selectedPlaneNode?.name.flatMap { delegate?.planeMappings[$0] },
+            onSelect: handleSelection
+        )
         
-        let imageLayout = UICollectionViewFlowLayout()
-        imageLayout.scrollDirection = .horizontal
-        imageLayout.itemSize = CGSize(width: 120, height: 120) // Square cells
-        imageLayout.minimumInteritemSpacing = 16 // Space between items
-        imageLayout.minimumLineSpacing = 0
-        imageLayout.sectionInset = UIEdgeInsets(top: 8, left: 16, bottom: 12, right: 16) // Padding
+        // MARK: Window collection
+        let windowCollection = PickerCollection(
+            type: .window,
+            items: (1...68).map { "window\($0)" },
+            cellType: IconSelectorCell.self,
+            cellIdentifier: "iconCell",
+            selectedItem: nil,
+            onSelect: handleSelection
+        )
         
-        imageCollectionView.setCollectionViewLayout(imageLayout, animated: false)
-        imageCollectionView.delegate = self
-        imageCollectionView.dataSource = self
-        imageCollectionView.showsHorizontalScrollIndicator = false
-        imageCollectionView.showsVerticalScrollIndicator = false
-        imageCollectionView.backgroundColor = .systemBackground
-        imageCollectionView.isScrollEnabled = true
-        imageCollectionView.register(ImagePickerCell.self, forCellWithReuseIdentifier: "imageCell")
+        collections = [wallCollection, windowCollection]
+    }
+    
+    /// Builds the UI from the configured collections
+    private func setupUI() {
+        // MARK: Setup stack view
+        stackView.axis = .vertical
+        stackView.spacing = 0
+        stackView.distribution = .fillEqually
         
-        // MARK: Icon collection view setup
-        
-        let iconLayout = UICollectionViewFlowLayout()
-        iconLayout.scrollDirection = .horizontal
-        iconLayout.itemSize = CGSize(width: 120, height: 120)
-        iconLayout.minimumInteritemSpacing = 16
-        iconLayout.minimumLineSpacing = 0
-        iconLayout.sectionInset = UIEdgeInsets(top: 12, left: 16, bottom: 8, right: 16)
-        
-        iconCollectionView.setCollectionViewLayout(iconLayout, animated: false)
-        iconCollectionView.delegate = self
-        iconCollectionView.dataSource = self
-        iconCollectionView.showsHorizontalScrollIndicator = false
-        iconCollectionView.showsVerticalScrollIndicator = false
-        iconCollectionView.backgroundColor = .systemBackground
-        iconCollectionView.isScrollEnabled = true
-        iconCollectionView.register(IconSelectorCell.self, forCellWithReuseIdentifier: "iconCell")
-        
-        // MARK: Add to view hierarchy
-        
-        view.addSubview(imageCollectionView)
-        view.addSubview(iconCollectionView)
-        
-        imageCollectionView.translatesAutoresizingMaskIntoConstraints = false
-        iconCollectionView.translatesAutoresizingMaskIntoConstraints = false
-        
-        // MARK: Apply constraints
+        view.addSubview(stackView)
+        stackView.translatesAutoresizingMaskIntoConstraints = false
         
         NSLayoutConstraint.activate([
-            // Image collection: top of modal to fixed height
-            imageCollectionView.topAnchor.constraint(equalTo: view.topAnchor),
-            imageCollectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            imageCollectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            imageCollectionView.heightAnchor.constraint(equalToConstant: 160),
-            
-            // Icon collection: below image collection to fixed height
-            iconCollectionView.topAnchor.constraint(equalTo: imageCollectionView.bottomAnchor),
-            iconCollectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            iconCollectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            iconCollectionView.heightAnchor.constraint(equalToConstant: 160)
+            stackView.topAnchor.constraint(equalTo: view.topAnchor),
+            stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            stackView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        
+        // MARK: Create and add collection views for each collection
+        for collection in collections {
+            let collectionView = createCollectionView(for: collection)
+            collectionViewMap[collection.id] = collectionView
+            stackView.addArrangedSubview(collectionView)
+        }
+    }
+    
+    /// Creates a configured collection view for the given PickerCollection
+    /// - Parameter collection: The PickerCollection to create a view for
+    /// - Returns: Configured UICollectionView
+    private func createCollectionView(for collection: PickerCollection) -> UICollectionView {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .horizontal
+        layout.itemSize = CGSize(width: 120, height: 120)
+        layout.minimumInteritemSpacing = 16
+        layout.minimumLineSpacing = 0
+        layout.sectionInset = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.delegate = self
+        collectionView.dataSource = self
+        collectionView.showsHorizontalScrollIndicator = false
+        collectionView.showsVerticalScrollIndicator = false
+        collectionView.backgroundColor = .systemBackground
+        collectionView.isScrollEnabled = true
+        collectionView.register(collection.cellType, forCellWithReuseIdentifier: collection.cellIdentifier)
+        
+        // Tag the collection view with the collection ID for identification
+        collectionView.tag = collections.firstIndex { $0.id == collection.id } ?? 0
+        
+        return collectionView
     }
     
     // MARK: - UICollectionViewDataSource
     
     /// Returns the number of items in the specified collection view
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        if collectionView == imageCollectionView {
-            return imageNames.count
-        } else {
-            return iconNames.count
-        }
+        guard let collection = getCollection(for: collectionView) else { return 0 }
+        return collection.items.count
     }
     
     /// Configures and returns a cell for the collection view
-    /// Uses different cell types and identifiers for images vs icons
+    /// Defers to each collection's specific cell type
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        if collectionView == imageCollectionView {
-            // MARK: Image cell configuration
-            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "imageCell", for: indexPath) as! ImagePickerCell
-            
-            let imageName = imageNames[indexPath.item]
-            let isSelected = imageName == selectedImageName
-            cell.configure(with: imageName, isSelected: isSelected)
-            
-            return cell
-        } else {
-            // MARK: Icon cell configuration
-            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "iconCell", for: indexPath) as! IconSelectorCell
-            
-            let iconName = iconNames[indexPath.item]
-            let isSelected = iconName == selectedIconName
-            cell.configure(with: iconName, isSelected: isSelected)
-            
-            return cell
+        guard let collection = getCollection(for: collectionView) else {
+            return UICollectionViewCell()
         }
+        
+        let itemName = collection.items[indexPath.item]
+        let cell = collectionView.dequeueReusableCell(
+            withReuseIdentifier: collection.cellIdentifier,
+            for: indexPath
+        )
+        
+        // Configure the cell based on its type
+        if let pickerCell = cell as? ImagePickerCell {
+            pickerCell.configure(with: itemName, isSelected: itemName == collection.selectedItem)
+        } else if let iconCell = cell as? IconSelectorCell {
+            iconCell.configure(with: itemName, isSelected: itemName == collection.selectedItem)
+        }
+        
+        return cell
     }
     
     // MARK: - UICollectionViewDelegate
     
-    /// Handles selection from either collection view
-    /// Applies texture to plane if image selected, creates new icon if icon selected
+    /// Handles selection from any collection view
+    /// Delegates to the appropriate handler based on collection type
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        if collectionView == imageCollectionView {
-            // MARK: Handle wall texture selection
-            
-            let selectedImageName = imageNames[indexPath.item]
-            
-            // MARK: Ensure a plane is selected
-            // If no plane was selected, just close the modal
-            guard let planeName = delegate?.selectedPlaneNode?.name else {
-                dismiss(animated: true)
-                return
-            }
-            
-            // MARK: Update plane-to-image mapping
-            // Store the mapping in memory
-            delegate?.planeMappings[planeName] = selectedImageName
-            
-            // MARK: Persist mapping to UserDefaults
-            // Save for future app sessions
-            UserDefaults.standard.set(
-                delegate?.planeMappings,
-                forKey: delegate?.planeMappingsKey ?? "planeMappings"
-            )
-            
-            // MARK: Apply image to plane
-            // Update the visual appearance of the plane
-            delegate?.applyImageToNode(delegate!.selectedPlaneNode!, imageName: selectedImageName)
-            
-            // MARK: Close the modal
+        guard let collection = getCollection(for: collectionView) else { return }
+        
+        let selectedItem = collection.items[indexPath.item]
+        collection.onSelect(selectedItem)
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// Retrieves the PickerCollection for a given UICollectionView
+    /// - Parameter collectionView: The collection view to match
+    /// - Returns: The matching PickerCollection, or nil if not found
+    private func getCollection(for collectionView: UICollectionView) -> PickerCollection? {
+        let tag = collectionView.tag
+        guard tag < collections.count else { return nil }
+        return collections[tag]
+    }
+    
+    /// Unified handler for item selection across all collection types
+    /// Routes to appropriate behavior based on collection type
+    /// - Parameter selectedItem: The selected item name
+    /// 
+    /// Note: This closure is created with knowledge of which collection is calling it
+    /// via the PickerCollection.onSelect callback
+    private func handleSelection(_ selectedItem: String) {
+        // Find which collection this selection came from
+        guard let collection = collections.first(where: { $0.items.contains(selectedItem) }) else {
             dismiss(animated: true)
-        } else {
-            // MARK: Handle icon selection
-            
-            let selectedIconName = iconNames[indexPath.item]
-            
-            // MARK: Generate valid position for new icon
-            // Find a position that doesn't overlap with existing icons
-            if let validPosition = delegate?.generateValidIconPosition() {
-                // MARK: Create new icon at valid position
-                delegate?.addIconToWall(at: validPosition, with: selectedIconName)
-            } else {
-                // MARK: No valid position found - warn user
-                print("No valid position found for new icon - wall may be full")
-            }
-            
-            // MARK: Close the modal
-            dismiss(animated: true)
+            return
         }
+        
+        // MARK: Route to appropriate handler based on collection type
+        switch collection.type {
+        case .wall:
+            handleWallSelection(selectedItem)
+        case .window:
+            handleWindowSelection(selectedItem)
+        }
+    }
+    
+    /// Handles wall texture selection
+    /// - Parameter wallName: The selected wall texture asset name
+    private func handleWallSelection(_ wallName: String) {
+        // MARK: Ensure a plane is selected
+        guard let planeName = delegate?.selectedPlaneNode?.name else {
+            dismiss(animated: true)
+            return
+        }
+        
+        // MARK: Update plane-to-image mapping
+        delegate?.planeMappings[planeName] = wallName
+        
+        // MARK: Persist mapping to UserDefaults
+        UserDefaults.standard.set(
+            delegate?.planeMappings,
+            forKey: delegate?.planeMappingsKey ?? "planeMappings"
+        )
+        
+        // MARK: Apply image to plane
+        delegate?.applyImageToNode(delegate!.selectedPlaneNode!, imageName: wallName)
+        
+        // MARK: Close the modal
+        dismiss(animated: true)
+    }
+    
+    /// Handles window icon selection
+    /// - Parameter windowName: The selected window icon asset name
+    private func handleWindowSelection(_ windowName: String) {
+        // MARK: Generate valid position for new icon
+        if let validPosition = delegate?.generateValidIconPosition() {
+            // MARK: Create new icon at valid position
+            delegate?.addIconToWall(at: validPosition, with: windowName)
+        } else {
+            // MARK: No valid position found - warn user
+            print("No valid position found for new icon - wall may be full")
+        }
+        
+        // MARK: Close the modal
+        dismiss(animated: true)
     }
 }
 
@@ -1080,3 +1154,4 @@ class IconSelectorCell: UICollectionViewCell {
         selectionIndicator.isHidden = !isSelected
     }
 }
+
