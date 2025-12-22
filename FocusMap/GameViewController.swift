@@ -316,10 +316,12 @@ class GameViewController: UIViewController {
         scene.rootNode.addChildNode(bottomNode)
         
         // MARK: Camera Setup
-        // Create and position the camera for an isometric-like view
+        // Create and position the camera for 2-point perspective view
         let cameraNode = SCNNode()
-        cameraNode.camera = SCNCamera()
-        cameraNode.position = SCNVector3(5, 2, 5) // Isometric-like perspective
+        let camera = SCNCamera()
+        camera.usesOrthographicProjection = false // Use perspective projection
+        cameraNode.camera = camera
+        cameraNode.position = SCNVector3(5, 2, 5) // Camera position for 2-point perspective
         cameraNode.look(at: SCNVector3(0, -0.5, 0)) // Focus slightly below origin
         scene.rootNode.addChildNode(cameraNode)
         
@@ -341,7 +343,99 @@ class GameViewController: UIViewController {
         ambientLight.light!.color = UIColor(white: 0.4, alpha: 1.0)
         scene.rootNode.addChildNode(ambientLight)
         
+        // MARK: Add default walkdown sprite standing on floor
+        addDefaultWalkdownSprite(to: scene)
+        
         return scene
+    }
+    
+    /// Creates and adds a default walkdown sprite standing on the floor
+    /// The sprite animates through walkDown1-6 frames in a loop
+    /// Uses reusable sprite positioning for isometric perspective
+    /// - Parameter scene: The SCNScene to add the sprite to
+    private func addDefaultWalkdownSprite(to scene: SCNScene) {
+        // MARK: Create and add walkdown sprite with animation
+        let spriteFrames = (1...10).map { "walkDown\($0)" }
+        addAnimatedSprite(
+            to: scene,
+            name: "walkdownSprite",
+            frames: spriteFrames,
+            size: 1.2,
+            position: (x: 0, z: 0.5),
+            frameDuration: 0.15
+        )
+    }
+    
+    /// Adds an animated sprite to the scene with proper 2-point perspective
+    /// Reusable for any sprite type that needs to stand on the floor
+    /// Sprite size and position scale based on Z-depth for perspective effect
+    /// - Parameters:
+    ///   - scene: The SCNScene to add the sprite to
+    ///   - name: Name identifier for the sprite node
+    ///   - frames: Array of image asset names to cycle through for animation
+    ///   - size: Size of the sprite (width and height in scene units) at Z=0
+    ///   - position: Tuple with x and z coordinates on the floor (y calculated automatically)
+    ///   - frameDuration: Duration in seconds for each frame to display
+    private func addAnimatedSprite(
+        to scene: SCNScene,
+        name: String,
+        frames: [String],
+        size: CGFloat,
+        position: (x: Float, z: Float),
+        frameDuration: TimeInterval
+    ) {
+        // MARK: Calculate perspective scale based on Z position
+        // Objects farther from camera (higher Z) appear smaller following perspective rules
+        // Camera is at Z=5, so Z values closer to 5 are farther from scene center
+        let zDistance = abs(position.z - 5.0) // Distance from camera Z position
+        let perspectiveScale: Float = max(0.3, 1.0 / (1.0 + (zDistance * 0.15))) // Scale decreases with distance
+        let scaledSize = size * CGFloat(perspectiveScale)
+        
+        // MARK: Create sprite plane
+        let spritePlane = SCNPlane(width: scaledSize, height: scaledSize)
+        
+        // MARK: Load and apply initial frame
+        if let initialImage = UIImage(named: frames.first ?? "") {
+            let material = SCNMaterial()
+            material.diffuse.contents = initialImage
+            material.isDoubleSided = true
+            spritePlane.materials = [material]
+        }
+        
+        // MARK: Create and position sprite node
+        let spriteNode = SCNNode(geometry: spritePlane)
+        spriteNode.name = name
+        
+        // Position sprite standing on floor with 2-point perspective
+        // Y: -1.5 + (scaledSize/2) places sprite standing on floor, scaled with perspective
+        // Z: position.z moves it in depth (toward/away from camera)
+        // X: position.x moves it horizontally
+        let spriteY = Float(-1.5) + Float(scaledSize / 2)
+        spriteNode.position = SCNVector3(position.x, spriteY, position.z)
+        
+        // MARK: Create animation loop cycling through frames
+        var actions: [SCNAction] = []
+        for frameName in frames {
+            actions.append(SCNAction.run { node in
+                if let image = UIImage(named: frameName) {
+                    if let geometry = node.geometry as? SCNPlane {
+                        let material = SCNMaterial()
+                        material.diffuse.contents = image
+                        material.isDoubleSided = true
+                        geometry.materials = [material]
+                    }
+                }
+            })
+            actions.append(SCNAction.wait(duration: frameDuration))
+        }
+        
+        // Create repeating animation
+        let sequence = SCNAction.sequence(actions)
+        let repeatAction = SCNAction.repeatForever(sequence)
+        spriteNode.runAction(repeatAction)
+        
+        // Add to scene
+        scene.rootNode.addChildNode(spriteNode)
     }
     
     // MARK: - Interface Orientation
