@@ -343,11 +343,11 @@ class GameViewController: UIViewController {
         ambientLight.light!.color = UIColor(white: 0.4, alpha: 1.0)
         scene.rootNode.addChildNode(ambientLight)
         
-        // MARK: Add default walkdown sprite standing on floor
-        addDefaultWalkdownSprite(to: scene)
+        // MARK: Add human model
+        addHumanModel(to: scene)
         
         return scene
-    }
+        }
     
     /// Creates and adds a default walkdown sprite standing on the floor
     /// The sprite animates through walkDown1-6 frames in a loop
@@ -364,6 +364,70 @@ class GameViewController: UIViewController {
             position: (x: 0, z: 0.5),
             frameDuration: 0.15
         )
+    }
+    
+    /// Loads and adds the human.usdz 3D model to the scene
+    /// Positions the model on the floor with proper rotation and scale
+    /// - Parameter scene: The SCNScene to add the model to
+    private func addHumanModel(to scene: SCNScene) {
+        // MARK: Load from main bundle
+        guard let modelPath = Bundle.main.path(forResource: "human", ofType: "usdz") else {
+            print("Failed to find human.usdz in bundle")
+            return
+        }
+        
+        let modelURL = URL(fileURLWithPath: modelPath)
+        print("Found model at path: \(modelPath)")
+        
+        // MARK: Load the USDZ scene
+        do {
+            let humanScene = try SCNScene(url: modelURL, options: nil)
+            
+            print("Scene loaded successfully. Root node has \(humanScene.rootNode.childNodes.count) children")
+            
+            // MARK: Add all child nodes from the loaded scene to our scene
+            for modelNode in humanScene.rootNode.childNodes {
+                let nodeCopy = modelNode.clone()
+                nodeCopy.name = "humanModel"
+                
+                // MARK: Position model on the floor
+                nodeCopy.position = SCNVector3(0.5, 0, 0.2)
+                
+                // MARK: Scale the model appropriately
+                let scale: Float = 1.0
+                nodeCopy.scale = SCNVector3(scale, scale, scale)
+                
+                // MARK: Add to scene
+                scene.rootNode.addChildNode(nodeCopy)
+                
+                print("Successfully added human model node: \(nodeCopy.name ?? "unknown")")
+                
+                // MARK: Check and play animations
+                playAnimations(on: nodeCopy)
+            }
+            
+        } catch {
+            print("Failed to load human.usdz model: \(error)")
+        }
+    }
+    
+    /// Detects and plays animations on the given node
+    /// - Parameter node: The node to play animations on
+    private func playAnimations(on node: SCNNode) {
+        // MARK: Check for animations on the node itself
+        let animationKeys = node.animationKeys
+        print("Node animations: \(animationKeys)")
+        
+        // MARK: Play all animations
+        for key in animationKeys {
+            node.addAnimation(node.animation(forKey: key)!, forKey: key)
+            print("Playing animation: \(key)")
+        }
+        
+        // MARK: Recursively check child nodes for animations
+        for childNode in node.childNodes {
+            playAnimations(on: childNode)
+        }
     }
     
     /// Adds an animated sprite to the scene with proper 2-point perspective
