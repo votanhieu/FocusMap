@@ -12,6 +12,7 @@
 
 import UIKit
 import SceneKit
+import ModelIO
 
 // MARK: - SCNVector3 Extension
 
@@ -320,9 +321,13 @@ class GameViewController: UIViewController {
         let cameraNode = SCNNode()
         let camera = SCNCamera()
         camera.usesOrthographicProjection = false // Use perspective projection
+        camera.zNear = 0.1
+        camera.zFar = 100.0
         cameraNode.camera = camera
-        cameraNode.position = SCNVector3(5, 2, 5) // Camera position for 2-point perspective
-        cameraNode.look(at: SCNVector3(0, -0.5, 0)) // Focus slightly below origin
+        cameraNode.position = SCNVector3(2, 1, 2) // Move camera closer to see scaled model
+        cameraNode.look(at: SCNVector3(0, 0, 0)) // Focus at origin
+        print("Camera at: \(cameraNode.position), looking at: (0, -0.5, 0)")
+        print("Camera zNear: \(camera.zNear), zFar: \(camera.zFar)")
         scene.rootNode.addChildNode(cameraNode)
         
         // MARK: Lighting Setup
@@ -366,67 +371,62 @@ class GameViewController: UIViewController {
         )
     }
     
-    /// Loads and adds the human.usdz 3D model to the scene
-    /// Positions the model on the floor with proper rotation and scale
+    /// Loads and adds the Astronaut.usdz 3D model to the scene using SceneKit
     /// - Parameter scene: The SCNScene to add the model to
     private func addHumanModel(to scene: SCNScene) {
-        // MARK: Load from main bundle
-        guard let modelPath = Bundle.main.path(forResource: "human", ofType: "usdz") else {
-            print("Failed to find human.usdz in bundle")
+        // Prefer SceneKit loading for USDZ
+        guard let modelScene = SCNScene(named: "Astronaut.usdz") else {
+            print("Failed to load Astronaut.usdz as SCNScene")
             return
         }
         
-        let modelURL = URL(fileURLWithPath: modelPath)
-        print("Found model at path: \(modelPath)")
-        
-        // MARK: Load the USDZ scene
-        do {
-            let humanScene = try SCNScene(url: modelURL, options: nil)
-            
-            print("Scene loaded successfully. Root node has \(humanScene.rootNode.childNodes.count) children")
-            
-            // MARK: Add all child nodes from the loaded scene to our scene
-            for modelNode in humanScene.rootNode.childNodes {
-                let nodeCopy = modelNode.clone()
-                nodeCopy.name = "humanModel"
-                
-                // MARK: Position model on the floor
-                nodeCopy.position = SCNVector3(0.5, 0, 0.2)
-                
-                // MARK: Scale the model appropriately
-                let scale: Float = 1.0
-                nodeCopy.scale = SCNVector3(scale, scale, scale)
-                
-                // MARK: Add to scene
-                scene.rootNode.addChildNode(nodeCopy)
-                
-                print("Successfully added human model node: \(nodeCopy.name ?? "unknown")")
-                
-                // MARK: Check and play animations
-                playAnimations(on: nodeCopy)
-            }
-            
-        } catch {
-            print("Failed to load human.usdz model: \(error)")
+        // Grab the model's root content
+        let containerNode = SCNNode()
+        for child in modelScene.rootNode.childNodes {
+            containerNode.addChildNode(child)
         }
+        containerNode.name = "astronautModel"
+        
+        // DEBUG: Check model bounds
+        let (min, max) = containerNode.boundingBox
+        print("Model bounding box - min: \(min), max: \(max)")
+        let size = SCNVector3(max.x - min.x, max.y - min.y, max.z - min.z)
+        print("Model size: \(size)")
+        
+        // Center the model by offsetting by negative min values
+        let scaleFactor: Float = 0.003  // Small model inside cube
+        containerNode.position = SCNVector3(-min.x * scaleFactor, -min.y * scaleFactor, -min.z * scaleFactor)
+        
+        // Scale model
+        containerNode.scale = SCNVector3(scaleFactor, scaleFactor, scaleFactor)
+        
+        // DEBUG: Print final position
+        print("Model positioned at: \(containerNode.position), scale: \(containerNode.scale)")
+        print("Scaled model size will be: \(size.x * scaleFactor) x \(size.y * scaleFactor) x \(size.z * scaleFactor)")
+        
+        // Add to main scene
+        scene.rootNode.addChildNode(containerNode)
+        print("Astronaut model loaded successfully")
+        
+        // Play any embedded animations
+        playEmbeddedAnimations(on: containerNode)
     }
     
-    /// Detects and plays animations on the given node
-    /// - Parameter node: The node to play animations on
-    private func playAnimations(on node: SCNNode) {
-        // MARK: Check for animations on the node itself
-        let animationKeys = node.animationKeys
-        print("Node animations: \(animationKeys)")
-        
-        // MARK: Play all animations
-        for key in animationKeys {
-            node.addAnimation(node.animation(forKey: key)!, forKey: key)
-            print("Playing animation: \(key)")
+    /// Traverses node hierarchy and starts any SCNAnimationPlayers found
+    /// - Parameter node: The node to start animations on (recursively)
+    private func playEmbeddedAnimations(on node: SCNNode) {
+        // Start animations attached to this node
+        for key in node.animationKeys {
+            if let player = node.animationPlayer(forKey: key) {
+                // Repeat indefinitely
+                player.animation.repeatCount = CGFloat.greatestFiniteMagnitude
+                player.play()
+                print("Playing animation player: \(key)")
+            }
         }
-        
-        // MARK: Recursively check child nodes for animations
-        for childNode in node.childNodes {
-            playAnimations(on: childNode)
+        // Recurse
+        for child in node.childNodes {
+            playEmbeddedAnimations(on: child)
         }
     }
     
