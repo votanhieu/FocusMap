@@ -430,6 +430,52 @@ class GameViewController: UIViewController {
         }
     }
     
+    /// Loads and adds a character model to float within the room
+    /// Characters float at a random height within the room space
+    /// - Parameter characterName: The character asset name (e.g., "Character1")
+    func addCharacterModel(named characterName: String) {
+        guard let sceneView = sceneView, let scene = sceneView.scene else { return }
+        
+        // Load the character model
+        guard let modelScene = SCNScene(named: "\(characterName).usdz") else {
+            print("Failed to load \(characterName).usdz")
+            return
+        }
+        
+        // Create container node for the character
+        let containerNode = SCNNode()
+        for child in modelScene.rootNode.childNodes {
+            containerNode.addChildNode(child)
+        }
+        containerNode.name = characterName
+        
+        // Get model bounds for proper scaling
+        let (min, _) = containerNode.boundingBox
+        
+        // Scale factor for character to float in room
+        let scaleFactor: Float = 0.003
+        containerNode.position = SCNVector3(-min.x * scaleFactor, -min.y * scaleFactor, -min.z * scaleFactor)
+        
+        // Scale the model
+        containerNode.scale = SCNVector3(scaleFactor, scaleFactor, scaleFactor)
+        
+        // Position character to float within room at random location
+        let randomX = Float.random(in: -1.5...1.5)
+        let randomY = Float.random(in: -0.5...1.0) // Float between floor and ceiling
+        let randomZ = Float.random(in: -0.8...0.8)
+        
+        containerNode.position = SCNVector3(randomX, randomY, randomZ)
+        
+        print("Character \(characterName) loaded and positioned at: \(containerNode.position)")
+        
+        // Add to scene
+        scene.rootNode.addChildNode(containerNode)
+        
+        // Play any embedded animations
+        playEmbeddedAnimations(on: containerNode)
+    }
+    
+
     /// Adds an animated sprite to the scene with proper 2-point perspective
     /// Reusable for any sprite type that needs to stand on the floor
     /// Sprite size and position scale based on Z-depth for perspective effect
@@ -983,6 +1029,7 @@ class GameViewController: UIViewController {
 enum PickerCollectionType {
     case wall
     case window
+    case character
     // Future: case shapes, case colors, etc.
     
     /// Display name for the collection
@@ -990,6 +1037,7 @@ enum PickerCollectionType {
         switch self {
         case .wall: return "Walls"
         case .window: return "Windows"
+        case .character: return "Characters"
         }
     }
     
@@ -998,6 +1046,7 @@ enum PickerCollectionType {
         switch self {
         case .wall: return "wall"
         case .window: return "window"
+        case .character: return "character"
         }
     }
 }
@@ -1016,6 +1065,22 @@ struct PickerCollection {
     
     var id: String { type.id }
     var title: String { type.title }
+}
+
+// MARK: - Wrapping Collection View
+
+/// Custom UICollectionView that automatically adjusts its height to fit content
+/// Used for collections that should not scroll internally
+class WrappingCollectionView: UICollectionView {
+    override var contentSize: CGSize {
+        didSet {
+            self.invalidateIntrinsicContentSize()
+        }
+    }
+    
+    override var intrinsicContentSize: CGSize {
+        return CGSize(width: UIView.noIntrinsicMetric, height: contentSize.height)
+    }
 }
 
 // MARK: - Image Picker Modal Controller
@@ -1084,7 +1149,17 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
             onSelect: handleSelection
         )
         
-        collections = [wallCollection, windowCollection]
+        // MARK: Character collection
+        let characterCollection = PickerCollection(
+            type: .character,
+            items: (1...6).map { "Character\($0)" },
+            cellType: IconSelectorCell.self,
+            cellIdentifier: "characterCell",
+            selectedItem: nil,
+            onSelect: handleSelection
+        )
+        
+        collections = [wallCollection, windowCollection, characterCollection]
     }
     
     /// Builds the UI from the configured collections
@@ -1149,35 +1224,53 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
         container.addSubview(collectionView)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         
-        // MARK: Calculate collection view height to show all items
-        // Calculate based on available screen width to fit items horizontally
-        let screenWidth = UIScreen.main.bounds.width
-        let itemSize: CGFloat = 50
-        let itemSpacing: CGFloat = 8
-        let sectionInsets: CGFloat = 32 // 16 left + 16 right
-        let availableWidth = screenWidth - sectionInsets
+        // MARK: Apply constraints with content height wrapping
+        // For window and character collections, wrap content height
+        // For other collections, use calculated height
         
-        let itemCount = collection.items.count
-        let itemsPerRow = floor(availableWidth / (itemSize + itemSpacing))
-        let rows = CGFloat(ceil(Double(itemCount) / Double(itemsPerRow)))
-        let lineSpacing: CGFloat = 8
-        
-        let collectionViewHeight = rows * (itemSize + lineSpacing) + 16 // 8 top + 8 bottom padding
-        
-        // MARK: Apply constraints
-        NSLayoutConstraint.activate([
-            // Title constraints
-            titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
-            titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
-            titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+        if collection.type == .window || collection.type == .character {
+            // Use intrinsic content size for wrapping collections
+            NSLayoutConstraint.activate([
+                // Title constraints
+                titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
+                titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+                titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+                
+                // Collection view constraints - height based on intrinsic content size
+                collectionView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+                collectionView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                collectionView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                collectionView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            ])
+        } else {
+            // Calculate collection view height to show all items
+            let screenWidth = UIScreen.main.bounds.width
+            let itemSize: CGFloat = 50
+            let itemSpacing: CGFloat = 8
+            let sectionInsets: CGFloat = 32 // 16 left + 16 right
+            let availableWidth = screenWidth - sectionInsets
             
-            // Collection view constraints
-            collectionView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            collectionView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            collectionView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            collectionView.heightAnchor.constraint(equalToConstant: collectionViewHeight)
-        ])
+            let itemCount = collection.items.count
+            let itemsPerRow = floor(availableWidth / (itemSize + itemSpacing))
+            let rows = CGFloat(ceil(Double(itemCount) / Double(itemsPerRow)))
+            let lineSpacing: CGFloat = 8
+            
+            let collectionViewHeight = rows * (itemSize + lineSpacing) + 16 // 8 top + 8 bottom padding
+            
+            NSLayoutConstraint.activate([
+                // Title constraints
+                titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
+                titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+                titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+                
+                // Collection view constraints
+                collectionView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+                collectionView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                collectionView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                collectionView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                collectionView.heightAnchor.constraint(equalToConstant: collectionViewHeight)
+            ])
+        }
         
         return container
     }
@@ -1193,7 +1286,7 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
         layout.minimumLineSpacing = 8
         layout.sectionInset = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
         
-        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        let collectionView = WrappingCollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.delegate = self
         collectionView.dataSource = self
         collectionView.showsHorizontalScrollIndicator = false
@@ -1279,6 +1372,8 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
             handleWallSelection(selectedItem)
         case .window:
             handleWindowSelection(selectedItem)
+        case .character:
+            handleCharacterSelection(selectedItem)
         }
     }
     
@@ -1319,7 +1414,17 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
         
         // MARK: Keep the modal open - do not dismiss
     }
-}
+    
+    /// Handles character selection
+    /// Loads and adds a character model to float within the room
+    /// - Parameter characterName: The selected character asset name (e.g., "Character1")
+    private func handleCharacterSelection(_ characterName: String) {
+        // MARK: Add character to scene
+        delegate?.addCharacterModel(named: characterName)
+        
+        // MARK: Keep the modal open - do not dismiss
+    }
+    }
 
 // MARK: - Image Picker Cell
 
