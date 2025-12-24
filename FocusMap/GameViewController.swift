@@ -375,7 +375,7 @@ class GameViewController: UIViewController {
     /// - Parameter scene: The SCNScene to add the model to
     private func addHumanModel(to scene: SCNScene) {
         // Prefer SceneKit loading for USDZ
-        guard let modelScene = SCNScene(named: "Astronaut.usdz") else {
+        guard let modelScene = SCNScene(named: "Bee_Wee.usdz") else {
             print("Failed to load Astronaut.usdz as SCNScene")
             return
         }
@@ -385,7 +385,7 @@ class GameViewController: UIViewController {
         for child in modelScene.rootNode.childNodes {
             containerNode.addChildNode(child)
         }
-        containerNode.name = "astronautModel"
+        containerNode.name = "Bear_On_Balloons"
         
         // DEBUG: Check model bounds
         let (min, max) = containerNode.boundingBox
