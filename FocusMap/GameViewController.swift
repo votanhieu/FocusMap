@@ -475,6 +475,51 @@ class GameViewController: UIViewController {
         playEmbeddedAnimations(on: containerNode)
     }
     
+    /// Loads and adds a desk model to stay on the floor
+    /// Desks are positioned on the floor at random X and Z locations
+    /// - Parameter deskName: The desk asset name (e.g., "desk1")
+    func addDeskModel(named deskName: String) {
+        guard let sceneView = sceneView, let scene = sceneView.scene else { return }
+        
+        // Load the desk model
+        guard let modelScene = SCNScene(named: "\(deskName).usdz") else {
+            print("Failed to load \(deskName).usdz")
+            return
+        }
+        
+        // Create container node for the desk
+        let containerNode = SCNNode()
+        for child in modelScene.rootNode.childNodes {
+            containerNode.addChildNode(child)
+        }
+        containerNode.name = deskName
+        
+        // Get model bounds for proper scaling
+        let (min, _) = containerNode.boundingBox
+        
+        // Scale factor for desk to sit on floor
+        let scaleFactor: Float = 0.003
+        containerNode.position = SCNVector3(-min.x * scaleFactor, -min.y * scaleFactor, -min.z * scaleFactor)
+        
+        // Scale the model
+        containerNode.scale = SCNVector3(scaleFactor, scaleFactor, scaleFactor)
+        
+        // Position desk on the floor at random location
+        let randomX = Float.random(in: -1.5...1.5)
+        let randomY: Float = -1.5 // Keep on floor
+        let randomZ = Float.random(in: -0.8...0.8)
+        
+        containerNode.position = SCNVector3(randomX, randomY, randomZ)
+        
+        print("Desk \(deskName) loaded and positioned at: \(containerNode.position)")
+        
+        // Add to scene
+        scene.rootNode.addChildNode(containerNode)
+        
+        // Play any embedded animations
+        playEmbeddedAnimations(on: containerNode)
+    }
+    
 
     /// Adds an animated sprite to the scene with proper 2-point perspective
     /// Reusable for any sprite type that needs to stand on the floor
@@ -1030,6 +1075,7 @@ enum PickerCollectionType {
     case wall
     case window
     case character
+    case desk
     // Future: case shapes, case colors, etc.
     
     /// Display name for the collection
@@ -1038,6 +1084,7 @@ enum PickerCollectionType {
         case .wall: return "Walls"
         case .window: return "Windows"
         case .character: return "Characters"
+        case .desk: return "Desks"
         }
     }
     
@@ -1047,6 +1094,7 @@ enum PickerCollectionType {
         case .wall: return "wall"
         case .window: return "window"
         case .character: return "character"
+        case .desk: return "desk"
         }
     }
 }
@@ -1159,7 +1207,17 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
             onSelect: handleSelection
         )
         
-        collections = [wallCollection, windowCollection, characterCollection]
+        // MARK: Desk collection
+        let deskCollection = PickerCollection(
+            type: .desk,
+            items: (1...15).map { "desk\($0)" },
+            cellType: IconSelectorCell.self,
+            cellIdentifier: "deskCell",
+            selectedItem: nil,
+            onSelect: handleSelection
+        )
+        
+        collections = [wallCollection, windowCollection, characterCollection, deskCollection]
     }
     
     /// Builds the UI from the configured collections
@@ -1374,6 +1432,8 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
             handleWindowSelection(selectedItem)
         case .character:
             handleCharacterSelection(selectedItem)
+        case .desk:
+            handleDeskSelection(selectedItem)
         }
     }
     
@@ -1421,6 +1481,16 @@ class ImagePickerModalViewController: UIViewController, UICollectionViewDelegate
     private func handleCharacterSelection(_ characterName: String) {
         // MARK: Add character to scene
         delegate?.addCharacterModel(named: characterName)
+        
+        // MARK: Keep the modal open - do not dismiss
+    }
+    
+    /// Handles desk selection
+    /// Loads and adds a desk model to the floor of the room
+    /// - Parameter deskName: The selected desk asset name (e.g., "desk1")
+    private func handleDeskSelection(_ deskName: String) {
+        // MARK: Add desk to scene
+        delegate?.addDeskModel(named: deskName)
         
         // MARK: Keep the modal open - do not dismiss
     }
